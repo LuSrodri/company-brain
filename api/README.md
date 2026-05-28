@@ -43,13 +43,30 @@ cp .env.example .env              # e edite CB_HF_TOKEN
 
 ## Rodar
 
+A forma recomendada pela documentação atual do FastAPI é o CLI `fastapi`, que usa
+o Uvicorn por baixo. O `entrypoint` (`app.main:app`) já está configurado no
+`pyproject.toml`, então não é preciso passar o caminho:
+
 ```bash
-python -m app.main
-# ou
-uvicorn app.main:app --reload
+fastapi dev      # desenvolvimento: auto-reload, escuta em 127.0.0.1
+fastapi run      # produção: sem reload, escuta em 0.0.0.0
+```
+
+Alternativas equivalentes (chamando o Uvicorn diretamente):
+
+```bash
+python -m app.main                 # usa as Settings (CB_HOST/CB_PORT)
+uvicorn app.main:app               # produção
+uvicorn app.main:app --reload      # desenvolvimento
 ```
 
 Docs interativas em `http://localhost:8000/docs`.
+
+> **Produção / replicação.** Por padrão roda **1 processo**. Como o Gemma 4 E2B
+> ocupa bastante VRAM/RAM e é carregado uma única vez no `lifespan`, prefira
+> escalar com **1 worker por GPU** em múltiplas réplicas/containers (atrás de um
+> proxy de terminação TLS) em vez de vários workers no mesmo processo — cada
+> worker carregaria sua própria cópia do modelo.
 
 ### Exemplos
 

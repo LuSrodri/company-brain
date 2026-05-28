@@ -12,8 +12,8 @@ license = { text = "Apache-2.0" }
 
 dependencies = [
     # Web
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
+    # fastapi[standard] já inclui uvicorn[standard] (com uvloop) e o CLI `fastapi`.
+    "fastapi[standard]>=0.115",
     "python-multipart>=0.0.9",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
@@ -51,6 +51,11 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+# Permite que o CLI `fastapi` (dev/run) e ferramentas (VS Code, FastAPI Cloud)
+# localizem o objeto da aplicação sem passar o caminho a cada chamada.
+[tool.fastapi]
+entrypoint = "app.main:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
