@@ -1,0 +1,6 @@
+# Local artifacts específicos do /api
+.venv/
+chroma_db/
+data/
+.hf_cache/
+*.egg-info/
