@@ -16,7 +16,7 @@ from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 from app.config import Settings
 from app.core.gemma import GemmaEngine
-from app.core.ingestion import build_document_from_file, build_text_document
+from app.core.ingestion import build_documents_from_file, build_text_document
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +98,16 @@ class RAGService:
 
     def ingest_file(
         self, path: str, *, doc_id: str, metadata: dict[str, Any] | None = None
-    ) -> str:
-        doc = build_document_from_file(
+    ) -> list[str]:
+        """Ingestão de um arquivo. PDFs viram 1 documento por página.
+
+        Retorna a lista de ``doc_id`` inseridos/atualizados (um por página, no
+        caso de PDF).
+        """
+        documents = build_documents_from_file(
             path, engine=self._engine, doc_id=doc_id, metadata=metadata
         )
-        return self.upsert_documents([doc])[0]
+        return self.upsert_documents(documents)
 
     def delete(self, doc_id: str) -> None:
         self._delete_if_exists(doc_id)

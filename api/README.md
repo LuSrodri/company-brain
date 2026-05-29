@@ -62,6 +62,12 @@ uvicorn app.main:app --reload      # desenvolvimento
 
 Docs interativas em `http://localhost:8000/docs`.
 
+> **Windows.** O banner do CLI `fastapi` usa o emoji 🚀; em consoles legados
+> (codec `cp1252`) isso causa `UnicodeEncodeError` antes do app subir. Rode com
+> UTF-8 forçado: `set PYTHONUTF8=1` (cmd) ou `$env:PYTHONUTF8=1` (PowerShell)
+> antes do `fastapi run`. Alternativa: usar `uvicorn app.main:app`, que não tem
+> esse banner.
+
 > **Produção / replicação.** Por padrão roda **1 processo**. Como o Gemma 4 E2B
 > ocupa bastante VRAM/RAM e é carregado uma única vez no `lifespan`, prefira
 > escalar com **1 worker por GPU** em múltiplas réplicas/containers (atrás de um

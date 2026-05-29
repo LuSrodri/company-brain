@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 
 from app.api.deps import get_rag_service
 from app.config import get_settings
-from app.core.ingestion import SUPPORTED_EXTS, UnsupportedFileTypeError
+from app.core.ingestion import EmptyDocumentError, SUPPORTED_EXTS, UnsupportedFileTypeError
 from app.core.rag import RAGService
 from app.schemas.documents import DocumentIn, DocumentResponse
 
@@ -57,13 +57,15 @@ def upload_document(
     try:
         with dest.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        ingested_id = service.ingest_file(str(dest), doc_id=resolved_id, metadata=meta)
+        ingested_ids = service.ingest_file(str(dest), doc_id=resolved_id, metadata=meta)
     except UnsupportedFileTypeError as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
+    except EmptyDocumentError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
     finally:
         dest.unlink(missing_ok=True)
 
-    return DocumentResponse(doc_ids=[ingested_id], total_chunks=service.count())
+    return DocumentResponse(doc_ids=ingested_ids, total_chunks=service.count())
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

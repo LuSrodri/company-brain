@@ -1,10 +1,11 @@
 """Ingestão multimodal: transforma conteúdo bruto em ``Document`` do LlamaIndex.
 
 Roteamento por tipo de arquivo:
-    * texto (.txt/.md)      -> leitura direta
-    * .pdf                  -> extração de texto com pypdf
-    * imagem (.png/.jpg...) -> OCR + descrição via Gemma 4 (visão)
-    * áudio (.wav/.mp3...)  -> transcrição (STT) via Gemma 4
+    * texto (.txt/.md)      -> leitura direta (1 documento, page=1)
+    * .pdf                  -> 1 documento POR PÁGINA, com metadata["page"]
+                              extraída pelo pypdf
+    * imagem (.png/.jpg...) -> OCR + descrição via Gemma 4 (visão), page=1
+    * áudio (.wav/.mp3...)  -> transcrição (STT) via Gemma 4, page=1
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ class UnsupportedFileTypeError(ValueError):
     """Levantado quando a extensão do arquivo não é suportada."""
 
 
+class EmptyDocumentError(ValueError):
+    """Levantado quando nenhum texto pôde ser extraído do arquivo."""
+
+
 def build_text_document(
     text: str, *, doc_id: str, metadata: dict[str, Any] | None = None
 ) -> Document:
@@ -35,22 +40,32 @@ def build_text_document(
     return Document(text=text, doc_id=doc_id, metadata=metadata or {})
 
 
-def build_document_from_file(
+def build_documents_from_file(
     path: str | Path,
     *,
     engine: GemmaEngine,
     doc_id: str,
     metadata: dict[str, Any] | None = None,
-) -> Document:
-    """Lê um arquivo do disco e devolve um ``Document`` com o texto extraído."""
+) -> list[Document]:
+    """Lê um arquivo do disco e devolve um ou mais ``Document`` com o texto extraído.
+
+    PDFs geram um ``Document`` por página (com ``metadata["page"]``); os demais
+    formatos geram um único documento (``page=1``).
+    """
     path = Path(path)
     ext = path.suffix.lower()
-    meta: dict[str, Any] = {"source": path.name, "modality": _modality(ext), **(metadata or {})}
+    base_meta: dict[str, Any] = {
+        "source": path.name,
+        "document": doc_id,
+        "modality": _modality(ext),
+        **(metadata or {}),
+    }
+
+    if ext in PDF_EXTS:
+        return _pdf_documents(path, doc_id=doc_id, base_meta=base_meta)
 
     if ext in TEXT_EXTS:
         text = path.read_text(encoding="utf-8", errors="replace")
-    elif ext in PDF_EXTS:
-        text = _extract_pdf_text(path)
     elif ext in IMAGE_EXTS:
         text = engine.describe_image(str(path))
     elif ext in AUDIO_EXTS:
@@ -60,7 +75,38 @@ def build_document_from_file(
             f"Extensão não suportada: {ext!r}. Suportadas: {sorted(SUPPORTED_EXTS)}"
         )
 
-    return build_text_document(text, doc_id=doc_id, metadata=meta)
+    text = (text or "").strip()
+    if not text:
+        raise EmptyDocumentError(f"Nenhum texto extraído de {path.name}.")
+    return [build_text_document(text, doc_id=doc_id, metadata={**base_meta, "page": 1})]
+
+
+def _pdf_documents(
+    path: Path, *, doc_id: str, base_meta: dict[str, Any]
+) -> list[Document]:
+    """Extrai o texto de cada página do PDF, criando um ``Document`` por página."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    documents: list[Document] = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        text = (page.extract_text() or "").strip()
+        if not text:
+            continue
+        documents.append(
+            build_text_document(
+                text,
+                doc_id=f"{doc_id}:p{page_number}",
+                metadata={**base_meta, "page": page_number},
+            )
+        )
+
+    if not documents:
+        raise EmptyDocumentError(
+            f"Nenhum texto extraído do PDF {path.name} "
+            "(pode ser um PDF escaneado/somente imagem)."
+        )
+    return documents
 
 
 def _modality(ext: str) -> str:
@@ -71,11 +117,3 @@ def _modality(ext: str) -> str:
     if ext in PDF_EXTS:
         return "pdf"
     return "text"
-
-
-def _extract_pdf_text(path: Path) -> str:
-    from pypdf import PdfReader
-
-    reader = PdfReader(str(path))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n\n".join(pages).strip()

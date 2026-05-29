@@ -53,6 +53,7 @@ class GemmaEngine:
         self._settings = settings
         self._processor: Any = None
         self._model: Any = None
+        self._device: str = "cpu"
 
     # ------------------------------------------------------------------ #
     # Carregamento
@@ -74,17 +75,40 @@ class GemmaEngine:
 
         self._processor = AutoProcessor.from_pretrained(s.llm_model, **common)
 
+        device = self._resolve_device(s.device)
+
         model_kwargs: dict[str, Any] = {
             "dtype": _resolve_dtype(s.dtype),
+            "low_cpu_mem_usage": True,
             **common,
         }
-        if s.device == "auto":
+        # Em CUDA usamos o sharding do accelerate (device_map="auto"). Em CPU/MPS,
+        # carregamos o modelo inteiro e o movemos para o device: device_map="auto"
+        # sem GPU pode deixar tensores no device 'meta' e quebrar na geração
+        # ("Tensor on device meta is not on the expected device cpu!").
+        if device == "cuda":
             model_kwargs["device_map"] = "auto"
 
         self._model = AutoModelForMultimodalLM.from_pretrained(s.llm_model, **model_kwargs)
+        self._model.eval()
 
-        if s.device not in ("auto",):
-            self._model = self._model.to(s.device)
+        if device != "cuda":
+            self._model = self._model.to(device)
+        self._device = device
+
+    @staticmethod
+    def _resolve_device(device: str) -> str:
+        """Resolve "auto" para um device concreto (cuda > mps > cpu)."""
+        if device != "auto":
+            return device
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        mps = getattr(torch.backends, "mps", None)
+        if mps is not None and mps.is_available():
+            return "mps"
+        return "cpu"
 
     # ------------------------------------------------------------------ #
     # Geração
@@ -113,7 +137,7 @@ class GemmaEngine:
             return_tensors="pt",
             add_generation_prompt=True,
             enable_thinking=enable_thinking,
-        ).to(self._model.device)
+        ).to(self._device)
 
         input_len = inputs["input_ids"].shape[-1]
 

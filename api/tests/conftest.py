@@ -27,9 +27,9 @@ class FakeRAGService:
         self.docs[doc_id] = {"text": text, "metadata": metadata or {}}
         return doc_id
 
-    def ingest_file(self, path: str, *, doc_id: str, metadata: dict | None = None) -> str:
+    def ingest_file(self, path: str, *, doc_id: str, metadata: dict | None = None) -> list[str]:
         self.docs[doc_id] = {"path": path, "metadata": metadata or {}}
-        return doc_id
+        return [doc_id]
 
     def delete(self, doc_id: str) -> None:
         self.docs.pop(doc_id, None)
