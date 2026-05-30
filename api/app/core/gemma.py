@@ -1,9 +1,10 @@
 """Engine compartilhada do ``google/gemma-4-E2B-it``.
 
-O Gemma 4 E2B é multimodal (texto, imagem e áudio). Para não carregar o modelo
-duas vezes na memória, esta engine é a **única** dona do processor + modelo e é
-reutilizada tanto pelo wrapper LLM do LlamaIndex (`GemmaLLM`) quanto pelo
-processador multimodal (`MultimodalProcessor`).
+O Gemma 4 E2B é multimodal (texto e imagem). Para não carregar o modelo duas
+vezes na memória, esta engine é a **única** dona do processor + modelo e é
+reutilizada tanto pelo wrapper LLM do LlamaIndex (`GemmaLLM`) quanto pela camada
+de ingestão (OCR/descrição de imagens e páginas de PDF). A transcrição de áudio
+fica a cargo da :class:`~app.core.transcription.WhisperEngine`.
 
 Referência de uso (model card, maio/2026):
     processor = AutoProcessor.from_pretrained(MODEL_ID)
@@ -159,25 +160,6 @@ class GemmaEngine:
     # ------------------------------------------------------------------ #
     # Helpers multimodais (usados pela camada de ingestão)
     # ------------------------------------------------------------------ #
-    def transcribe_audio(self, audio_path: str, *, language: str = "the original language") -> str:
-        """Speech-to-text (ASR) de um arquivo de áudio (≤ 30s) via Gemma 4."""
-        instruction = (
-            f"Transcribe the following speech segment in {language}.\n"
-            "Follow these specific instructions for formatting the answer:\n"
-            "* Only output the transcription, with no newlines.\n"
-            "* When transcribing numbers, write the digits."
-        )
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "audio", "audio": audio_path},
-                    {"type": "text", "text": instruction},
-                ],
-            }
-        ]
-        return self.generate(messages, enable_thinking=False)
-
     def describe_image(self, image_path: str, *, prompt: str | None = None) -> str:
         """Extrai/descreve o conteúdo de uma imagem (OCR + descrição) via Gemma 4."""
         text = prompt or (

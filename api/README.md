@@ -12,15 +12,30 @@ HTTP (FastAPI)
   └── POST /chat               pergunta + histórico -> resposta com fontes
 
 Orquestração (LlamaIndex)
-  ├── GemmaEngine        google/gemma-4-E2B-it (carregado UMA vez; texto+imagem+áudio)
+  ├── GemmaEngine        google/gemma-4-E2B-it (carregado UMA vez; texto+imagem)
+  ├── WhisperEngine      openai/whisper-large-v3-turbo (STT multilíngue, c/ timestamps)
   ├── GemmaLLM           adaptador CustomLLM do LlamaIndex (geração de texto)
   ├── HuggingFaceEmbedding   microsoft/harrier-oss-v1-0.6b (instrução só na query)
   └── ChromaVectorStore  ChromaDB com PersistentClient (persistência local)
 ```
 
 A `GemmaEngine` é a única dona do modelo Gemma 4 e é compartilhada entre o LLM de
-chat e o processador multimodal de ingestão (STT de áudio e OCR/descrição de
-imagens), evitando carregar o modelo duas vezes.
+chat e a camada de ingestão (OCR/descrição de imagens e páginas de PDF),
+evitando carregar o modelo duas vezes. A transcrição de áudio fica a cargo da
+`WhisperEngine` (Whisper multilíngue via Hugging Face), preservando timestamps.
+
+### Ingestão por modalidade
+
+Cada tipo de arquivo é roteado para a ferramenta adequada em `app/core/ingestion.py`:
+
+| Tipo                | Ferramenta                                              | Saída                          |
+| ------------------- | ------------------------------------------------------- | ------------------------------ |
+| `.txt/.csv/.md/...` | leitura direta de texto                                 | 1 documento (`page=1`)         |
+| `.pdf`              | **pdf2image** rasteriza + **Gemma 4** (OCR/descrição)   | 1 documento **por página**     |
+| imagem (`.png/...`) | **Gemma 4** (visão: OCR + descrição)                    | 1 documento (`page=1`)         |
+| áudio (`.mp3/...`)  | **Whisper** (`large-v3-turbo`, multilíngue) c/ timestamps | 1 documento (`[HH:MM:SS] ...`) |
+| `.xlsx/.xlsm`       | **pandas + openpyxl** (texto) + **Gemma 4** (imagens)   | 1 documento **por aba**        |
+| `.docx`             | **MarkItDown + python-docx** (imagens) + **Gemma 4**    | 1 documento (`page=1`)         |
 
 ## Pré-requisitos
 
@@ -28,6 +43,13 @@ imagens), evitando carregar o modelo duas vezes.
 - Token do Hugging Face com a licença do `google/gemma-4-E2B-it` aceita
   (modelo *gated*). Defina em `CB_HF_TOKEN`.
 - GPU recomendada para inferência; CPU funciona, porém lento.
+- **poppler** (necessário pelo `pdf2image` para rasterizar PDFs):
+  - Linux: `apt-get install poppler-utils`
+  - macOS: `brew install poppler`
+  - Windows: baixe em
+    [poppler-windows](https://github.com/oschwartz10612/poppler-windows),
+    extraia e aponte `CB_POPPLER_PATH` para a pasta `.../Library/bin` (ou
+    adicione-a ao `PATH`).
 
 ## Setup
 
@@ -82,9 +104,9 @@ curl -X POST http://localhost:8000/documents \
   -H "Content-Type: application/json" \
   -d '{"doc_id":"manual-rh","text":"Funcionários têm 30 dias de férias.","metadata":{"area":"rh"}}'
 
-# Upload multimodal (imagem/áudio/pdf são parseados pelo Gemma 4)
+# Upload multimodal (áudio via Whisper; pdf/imagem/planilha/docx via Gemma 4)
 curl -X POST http://localhost:8000/documents/upload \
-  -F "file=@reuniao.wav" -F "doc_id=ata-2026-05"
+  -F "file=@reuniao.mp3" -F "doc_id=ata-2026-05"
 
 # Chat
 curl -X POST http://localhost:8000/chat \
@@ -94,14 +116,24 @@ curl -X POST http://localhost:8000/chat \
 
 ## Testes
 
-Os testes usam um `FakeRAGService` e **não** baixam modelos:
+Os testes unitários usam um `FakeRAGService`/engines *fake* e **não** baixam modelos:
 
 ```bash
 pytest
 ```
 
+Os testes **end-to-end** (modelos reais: Gemma 4 + Whisper + harrier) ficam fora
+da suíte padrão. Eles exigem `CB_HF_TOKEN` (em `.env.dev` ou no ambiente) e os
+arquivos reais em [`tests/e2e_assets/`](tests/e2e_assets/README.md) (o caso de
+PDF também precisa do poppler). Rode com:
+
+```bash
+pytest -m e2e -s
+```
+
 ## Configuração
 
 Todas as variáveis usam o prefixo `CB_` — veja [`.env.example`](.env.example).
-Principais: `CB_HF_TOKEN`, `CB_LLM_MODEL`, `CB_EMBED_MODEL`, `CB_DEVICE`,
-`CB_CHROMA_PATH`, `CB_SIMILARITY_TOP_K`, `CB_ENABLE_THINKING`.
+Principais: `CB_HF_TOKEN`, `CB_LLM_MODEL`, `CB_EMBED_MODEL`, `CB_STT_MODEL`,
+`CB_STT_LANGUAGE`, `CB_DEVICE`, `CB_CHROMA_PATH`, `CB_SIMILARITY_TOP_K`,
+`CB_ENABLE_THINKING`, `CB_PDF_DPI`, `CB_POPPLER_PATH`.

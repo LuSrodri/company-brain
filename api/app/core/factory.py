@@ -11,11 +11,19 @@ from app.core.embeddings import build_embed_model
 from app.core.gemma import GemmaEngine
 from app.core.llm import GemmaLLM
 from app.core.rag import RAGService
+from app.core.transcription import WhisperEngine
 
 
 def build_rag_service(settings: Settings) -> RAGService:
-    """Instancia engine Gemma, LLM, embeddings e o RAGService (sem carregar pesos)."""
+    """Instancia engines Gemma/Whisper, LLM, embeddings e o RAGService (sem carregar pesos)."""
     engine = GemmaEngine(settings)
+    stt_engine = WhisperEngine(settings)
     llm = GemmaLLM(engine, settings)
     embed_model = build_embed_model(settings)
-    return RAGService(settings, llm=llm, embed_model=embed_model, engine=engine)
+    return RAGService(
+        settings,
+        llm=llm,
+        embed_model=embed_model,
+        engine=engine,
+        stt_engine=stt_engine,
+    )

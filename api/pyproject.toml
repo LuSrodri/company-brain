@@ -26,7 +26,7 @@ dependencies = [
     # Vector DB
     "chromadb>=0.5",
 
-    # Modelos (Gemma 4 E2B + harrier embeddings) via Hugging Face
+    # Modelos (Gemma 4 E2B + harrier embeddings + Whisper STT) via Hugging Face
     "transformers>=4.57",
     "torch>=2.3",
     "torchvision>=0.18",
@@ -35,10 +35,15 @@ dependencies = [
     "huggingface-hub>=0.25",
 
     # Multimodal: áudio (STT) e parse de documentos/imagens
-    "librosa>=0.10",
+    "librosa>=0.10",        # decodifica áudio (mp3/m4a/...) para o Whisper
     "soundfile>=0.12",
     "pillow>=10.3",
-    "pypdf>=4.2",
+    "pdf2image>=1.17",      # rasteriza páginas de PDF (requer poppler no sistema)
+    "pandas>=2.2",          # leitura tabular de planilhas .xlsx/.xlsm
+    "openpyxl>=3.1",        # backend .xlsx do pandas + imagens embutidas
+    "markitdown[docx]>=0.1",  # conversão de .docx para Markdown
+    "python-docx>=1.1",     # extração de imagens embutidas em .docx
+    "tabulate>=0.9",        # render tabular auxiliar
 ]
 
 [project.optional-dependencies]
@@ -47,7 +52,6 @@ dev = [
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
     "ruff>=0.5",
-    "fpdf2>=2.7",  # gera PDFs reais nos testes e2e
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -65,7 +69,7 @@ asyncio_mode = "auto"
 # Rode-os com: pytest -m e2e
 addopts = "-q -m 'not e2e'"
 markers = [
-    "e2e: testes end-to-end com modelos reais (Gemma 4 + harrier); exigem CB_HF_TOKEN",
+    "e2e: testes end-to-end com modelos reais (Gemma 4 + Whisper + harrier); exigem CB_HF_TOKEN e arquivos em tests/e2e_assets",
 ]
 
 [tool.ruff]

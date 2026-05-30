@@ -10,6 +10,7 @@
 chroma_db/
 data/
 .hf_cache/
+.poppler/
 *.egg-info/
 
 server.log

@@ -1,7 +1,7 @@
 """Endpoints de ingestão/atualização de documentos.
 
 * ``POST /documents``        -> upsert de documento textual (JSON).
-* ``POST /documents/upload`` -> upsert multimodal (arquivo: texto, pdf, imagem, áudio).
+* ``POST /documents/upload`` -> upsert multimodal (texto, pdf, imagem, áudio, xlsx, docx).
 """
 
 from __future__ import annotations
@@ -36,11 +36,14 @@ def upsert_document(
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 def upload_document(
     service: Annotated[RAGService, Depends(get_rag_service)],
-    file: Annotated[UploadFile, File(description="Arquivo: texto, pdf, imagem ou áudio.")],
+    file: Annotated[
+        UploadFile,
+        File(description="Arquivo: texto, pdf, imagem, áudio, xlsx ou docx."),
+    ],
     doc_id: Annotated[str | None, Form()] = None,
     metadata: Annotated[str | None, Form(description="JSON opcional de metadados.")] = None,
 ) -> DocumentResponse:
-    """Ingestão multimodal: texto/PDF direto, imagem e áudio via Gemma 4."""
+    """Ingestão multimodal: texto direto; PDF/imagem/xlsx/docx via Gemma 4; áudio via Whisper."""
     settings = get_settings()
     ext = Path(file.filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTS:
