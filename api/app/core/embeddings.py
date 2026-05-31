@@ -12,6 +12,7 @@ from __future__ import annotations
 from llama_index.core.base.embeddings.base import BaseEmbedding
 
 from app.config import Settings
+from app.core.devices import resolve_device
 
 # Instrução recomendada pelo model card do harrier-oss para recuperação.
 RETRIEVAL_TASK = "Given a web search query, retrieve relevant passages that answer the query"
@@ -27,7 +28,9 @@ def build_embed_model(settings: Settings) -> BaseEmbedding:
     """
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-    device = None if settings.device == "auto" else settings.device
+    # Resolve "auto"/"rocm" em um device concreto (cuda/mps/cpu) compartilhado
+    # com o Whisper — cobre NVIDIA, AMD ROCm e fallback CPU.
+    device = resolve_device(settings.device)
 
     return HuggingFaceEmbedding(
         model_name=settings.embed_model,

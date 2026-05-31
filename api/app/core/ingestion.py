@@ -22,8 +22,8 @@ from typing import Any
 
 from llama_index.core import Document
 
-from app.core.gemma import GemmaEngine
 from app.core.transcription import WhisperEngine
+from app.core.vision import ImageDescriber
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def build_text_document(
 def build_documents_from_file(
     path: str | Path,
     *,
-    engine: GemmaEngine,
+    engine: ImageDescriber,
     stt_engine: WhisperEngine,
     doc_id: str,
     metadata: dict[str, Any] | None = None,
@@ -115,7 +115,7 @@ def build_documents_from_file(
 # PDF: pdf2image (rasteriza) + Gemma 4 (OCR/descrição), 1 documento por página
 # --------------------------------------------------------------------------- #
 def _pdf_documents(
-    path: Path, *, engine: GemmaEngine, doc_id: str, base_meta: dict[str, Any]
+    path: Path, *, engine: ImageDescriber, doc_id: str, base_meta: dict[str, Any]
 ) -> list[Document]:
     """Rasteriza cada página do PDF e usa o Gemma 4 para extrair o texto (OCR)."""
     from app.config import get_settings
@@ -150,7 +150,7 @@ def _pdf_documents(
 # XLSX: pandas (texto das abas) + openpyxl (imagens embutidas -> Gemma 4)
 # --------------------------------------------------------------------------- #
 def _xlsx_documents(
-    path: Path, *, engine: GemmaEngine, doc_id: str, base_meta: dict[str, Any]
+    path: Path, *, engine: ImageDescriber, doc_id: str, base_meta: dict[str, Any]
 ) -> list[Document]:
     """Extrai o texto de cada aba (pandas) e descreve imagens embutidas (openpyxl)."""
     import pandas as pd
@@ -191,7 +191,7 @@ def _dataframe_to_text(sheet_name: str, frame: Any) -> str:
     return f"Planilha: {sheet_name}\n{body}".strip()
 
 
-def _xlsx_images(path: Path, *, engine: GemmaEngine) -> dict[str, list[str]]:
+def _xlsx_images(path: Path, *, engine: ImageDescriber) -> dict[str, list[str]]:
     """Descreve, via Gemma 4, imagens embutidas em cada aba do workbook."""
     descriptions: dict[str, list[str]] = {}
     try:
@@ -231,7 +231,7 @@ def _openpyxl_image_bytes(image: Any) -> bytes | None:
 # DOCX: MarkItDown (texto) + python-docx (imagens embutidas -> Gemma 4)
 # --------------------------------------------------------------------------- #
 def _docx_documents(
-    path: Path, *, engine: GemmaEngine, doc_id: str, base_meta: dict[str, Any]
+    path: Path, *, engine: ImageDescriber, doc_id: str, base_meta: dict[str, Any]
 ) -> list[Document]:
     """Converte o .docx em Markdown (MarkItDown) e descreve imagens (python-docx)."""
     from markitdown import MarkItDown
@@ -246,7 +246,7 @@ def _docx_documents(
     return [build_text_document(full_text, doc_id=doc_id, metadata={**base_meta, "page": 1})]
 
 
-def _docx_image_descriptions(path: Path, *, engine: GemmaEngine) -> list[str]:
+def _docx_image_descriptions(path: Path, *, engine: ImageDescriber) -> list[str]:
     """Descreve, via Gemma 4, as imagens embutidas em um .docx."""
     descriptions: list[str] = []
     try:
@@ -272,7 +272,7 @@ def _docx_image_descriptions(path: Path, *, engine: GemmaEngine) -> list[str]:
 # --------------------------------------------------------------------------- #
 # Helpers de imagem (gravam um arquivo temporário e chamam o Gemma 4)
 # --------------------------------------------------------------------------- #
-def _describe_pil_image(image: Any, *, engine: GemmaEngine, prompt: str) -> str:
+def _describe_pil_image(image: Any, *, engine: ImageDescriber, prompt: str) -> str:
     """Salva uma imagem PIL em arquivo temporário e a descreve via Gemma 4."""
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -283,7 +283,7 @@ def _describe_pil_image(image: Any, *, engine: GemmaEngine, prompt: str) -> str:
         tmp_path.unlink(missing_ok=True)
 
 
-def _describe_image_bytes(data: bytes, *, engine: GemmaEngine, prompt: str) -> str:
+def _describe_image_bytes(data: bytes, *, engine: ImageDescriber, prompt: str) -> str:
     """Grava bytes de imagem em arquivo temporário e os descreve via Gemma 4."""
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(data)

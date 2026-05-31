@@ -12,17 +12,32 @@ HTTP (FastAPI)
   └── POST /chat               pergunta + histórico -> resposta com fontes
 
 Orquestração (LlamaIndex)
-  ├── GemmaEngine        google/gemma-4-E2B-it (carregado UMA vez; texto+imagem)
-  ├── WhisperEngine      openai/whisper-large-v3-turbo (STT multilíngue, c/ timestamps)
-  ├── GemmaLLM           adaptador CustomLLM do LlamaIndex (geração de texto)
-  ├── HuggingFaceEmbedding   microsoft/harrier-oss-v1-0.6b (instrução só na query)
+  ├── GoogleGenAI        gemma-4-31b-it via Google AI Studio (chat; texto+imagem)
+  ├── ImageDescriber     usa o GoogleGenAI p/ OCR/descrição de imagens na ingestão
+  ├── WhisperEngine      openai/whisper-large-v3-turbo (STT local, c/ timestamps)
+  ├── HuggingFaceEmbedding   microsoft/harrier-oss-v1-0.6b (local; instrução só na query)
   └── ChromaVectorStore  ChromaDB com PersistentClient (persistência local)
 ```
 
-A `GemmaEngine` é a única dona do modelo Gemma 4 e é compartilhada entre o LLM de
-chat e a camada de ingestão (OCR/descrição de imagens e páginas de PDF),
-evitando carregar o modelo duas vezes. A transcrição de áudio fica a cargo da
-`WhisperEngine` (Whisper multilíngue via Hugging Face), preservando timestamps.
+O LLM é o `GoogleGenAI` da integração **oficial** `llama-index-llms-google-genai`
+(wrap do SDK `google-genai`). O **mesmo** LLM serve o chat e a descrição
+multimodal de imagens da ingestão (via `ImageDescriber`, que monta uma
+`ChatMessage` com `ImageBlock` + `TextBlock`). A transcrição de áudio fica a cargo
+da `WhisperEngine` (Whisper multilíngue via Hugging Face, local), com timestamps.
+
+### Device dos modelos locais (NVIDIA / AMD / CPU)
+
+O LLM/ingestão multimodal roda na nuvem (Google AI Studio). Quem ainda roda
+localmente — **Whisper (STT)** e **embeddings (harrier-oss)** — escolhe o device
+via `CB_DEVICE` (`app/core/devices.py`):
+
+- `auto` (padrão): `cuda` → `mps` → `cpu`.
+- **NVIDIA**: CUDA (`cuda`).
+- **AMD**: ROCm, que no PyTorch é exposto como `cuda` (use `cuda` ou o alias
+  `rocm`). Cobre GPUs suportadas pelo ROCm; GPUs AMD antigas **não** cobertas
+  pelo ROCm (ex.: RX 580 / Polaris) caem em `cpu` — não há suporte a DirectML
+  (ele prenderia o PyTorch em 2.3.1, incompatível com o stack atual).
+- **CPU**: `cpu` (fallback sempre disponível).
 
 ### Ingestão por modalidade
 
@@ -31,18 +46,21 @@ Cada tipo de arquivo é roteado para a ferramenta adequada em `app/core/ingestio
 | Tipo                | Ferramenta                                              | Saída                          |
 | ------------------- | ------------------------------------------------------- | ------------------------------ |
 | `.txt/.csv/.md/...` | leitura direta de texto                                 | 1 documento (`page=1`)         |
-| `.pdf`              | **pdf2image** rasteriza + **Gemma 4** (OCR/descrição)   | 1 documento **por página**     |
-| imagem (`.png/...`) | **Gemma 4** (visão: OCR + descrição)                    | 1 documento (`page=1`)         |
+| `.pdf`              | **pdf2image** rasteriza + **Gemma 4** (API, OCR/descrição) | 1 documento **por página**     |
+| imagem (`.png/...`) | **Gemma 4** (API, visão: OCR + descrição)               | 1 documento (`page=1`)         |
 | áudio (`.mp3/...`)  | **Whisper** (`large-v3-turbo`, multilíngue) c/ timestamps | 1 documento (`[HH:MM:SS] ...`) |
-| `.xlsx/.xlsm`       | **pandas + openpyxl** (texto) + **Gemma 4** (imagens)   | 1 documento **por aba**        |
-| `.docx`             | **MarkItDown + python-docx** (imagens) + **Gemma 4**    | 1 documento (`page=1`)         |
+| `.xlsx/.xlsm`       | **pandas + openpyxl** (texto) + **Gemma 4** (API, imagens) | 1 documento **por aba**        |
+| `.docx`             | **MarkItDown + python-docx** (imagens) + **Gemma 4** (API) | 1 documento (`page=1`)         |
 
 ## Pré-requisitos
 
 - Python 3.11+
-- Token do Hugging Face com a licença do `google/gemma-4-E2B-it` aceita
-  (modelo *gated*). Defina em `CB_HF_TOKEN`.
-- GPU recomendada para inferência; CPU funciona, porém lento.
+- **Chave do Google AI Studio** (`CB_GOOGLE_API_KEY`) para o LLM/ingestão
+  multimodal (`gemma-4-31b-it`). Gere em <https://aistudio.google.com/apikey>.
+- Token do Hugging Face (`CB_HF_TOKEN`) — opcional, usado só pelos modelos
+  locais (Whisper STT e embeddings harrier-oss).
+- GPU recomendada para Whisper/embeddings; CPU funciona, porém lento. Veja a
+  seção *Device* sobre NVIDIA/AMD/CPU.
 - **poppler** (necessário pelo `pdf2image` para rasterizar PDFs):
   - Linux: `apt-get install poppler-utils`
   - macOS: `brew install poppler`
@@ -60,7 +78,7 @@ python -m venv .venv
 # source .venv/bin/activate       # Linux/macOS
 
 pip install -e ".[dev]"
-cp .env.example .env              # e edite CB_HF_TOKEN
+cp .env.example .env              # e edite CB_GOOGLE_API_KEY (e CB_HF_TOKEN se preciso)
 ```
 
 ## Rodar
@@ -90,11 +108,11 @@ Docs interativas em `http://localhost:8000/docs`.
 > antes do `fastapi run`. Alternativa: usar `uvicorn app.main:app`, que não tem
 > esse banner.
 
-> **Produção / replicação.** Por padrão roda **1 processo**. Como o Gemma 4 E2B
-> ocupa bastante VRAM/RAM e é carregado uma única vez no `lifespan`, prefira
-> escalar com **1 worker por GPU** em múltiplas réplicas/containers (atrás de um
-> proxy de terminação TLS) em vez de vários workers no mesmo processo — cada
-> worker carregaria sua própria cópia do modelo.
+> **Produção / replicação.** O LLM roda na nuvem (Google AI Studio), então o
+> processo local carrega apenas Whisper + embeddings. Ainda assim, esses modelos
+> ocupam RAM/VRAM e são carregados uma vez no `lifespan`; ao escalar, prefira
+> **1 worker por GPU** em réplicas/containers (atrás de um proxy TLS) a vários
+> workers no mesmo processo, e proteja sua cota da API contra concorrência alta.
 
 ### Exemplos
 
@@ -122,10 +140,11 @@ Os testes unitários usam um `FakeRAGService`/engines *fake* e **não** baixam m
 pytest
 ```
 
-Os testes **end-to-end** (modelos reais: Gemma 4 + Whisper + harrier) ficam fora
-da suíte padrão. Eles exigem `CB_HF_TOKEN` (em `.env.dev` ou no ambiente) e os
-arquivos reais em [`tests/e2e_assets/`](tests/e2e_assets/README.md) (o caso de
-PDF também precisa do poppler). Rode com:
+Os testes **end-to-end** (reais: `gemma-4-31b-it` via API + Whisper + harrier)
+ficam fora da suíte padrão. Eles exigem `CB_GOOGLE_API_KEY` e `CB_HF_TOKEN` (em
+`.env.dev` ou no ambiente) e os arquivos reais em
+[`tests/e2e_assets/`](tests/e2e_assets/README.md) (o caso de PDF também precisa
+do poppler). Rode com:
 
 ```bash
 pytest -m e2e -s
@@ -134,6 +153,6 @@ pytest -m e2e -s
 ## Configuração
 
 Todas as variáveis usam o prefixo `CB_` — veja [`.env.example`](.env.example).
-Principais: `CB_HF_TOKEN`, `CB_LLM_MODEL`, `CB_EMBED_MODEL`, `CB_STT_MODEL`,
-`CB_STT_LANGUAGE`, `CB_DEVICE`, `CB_CHROMA_PATH`, `CB_SIMILARITY_TOP_K`,
-`CB_ENABLE_THINKING`, `CB_PDF_DPI`, `CB_POPPLER_PATH`.
+Principais: `CB_GOOGLE_API_KEY`, `CB_LLM_MODEL`, `CB_HF_TOKEN`, `CB_EMBED_MODEL`,
+`CB_STT_MODEL`, `CB_STT_LANGUAGE`, `CB_DEVICE`, `CB_CHROMA_PATH`,
+`CB_SIMILARITY_TOP_K`, `CB_MAX_NEW_TOKENS`, `CB_PDF_DPI`, `CB_POPPLER_PATH`.

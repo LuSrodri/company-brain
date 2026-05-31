@@ -12,13 +12,14 @@ Requisito inegociável (OBS do enunciado): **a resposta gerada pelo Gemma 4 nunc
 pode estar vazia**. Além disso, validamos que o parágrafo esperado (e, quando
 aplicável, a página/timestamp) aparece nas fontes recuperadas.
 
-Pesado: baixa/carrega Gemma 4 E2B (gated) + Whisper + harrier. Fora da suíte
-padrão:
+Pesado e com rede: chama o ``gemma-4-31b-it`` via Google AI Studio e baixa/carrega
+Whisper + harrier localmente. Fora da suíte padrão:
 
     pytest -m e2e -s
 
-Requisitos: ``CB_HF_TOKEN`` no ambiente OU em ``api/.env.dev``; arquivos em
-``tests/e2e_assets/``; e, para o caso de PDF, o poppler instalado.
+Requisitos: ``CB_GOOGLE_API_KEY`` (LLM/ingestão) e ``CB_HF_TOKEN`` (Whisper/embeddings)
+no ambiente OU em ``api/.env.dev``; arquivos em ``tests/e2e_assets/``; e, para o
+caso de PDF, o poppler instalado.
 """
 
 from __future__ import annotations
@@ -71,7 +72,9 @@ CASES: list[dict] = [
         "id": "xlsx",
         "filename": "notas.xlsx",
         "question": "Quanto falta para eu passar em Sistemas Operacionais Embarcados?",
-        "expect": ["0,54"],
+        # A célula "NOTA MINIMA AF" guarda o float cru lido pelo pandas
+        # (0.5444444444444446), não um "0,54" formatado — casamos pelo prefixo.
+        "expect": ["0.5444"],
     },
     {
         "id": "image",
@@ -88,9 +91,7 @@ CASES: list[dict] = [
 
 
 def _load_env_dev() -> None:
-    """Carrega api/.env.dev no ambiente (se existir e o token ainda não estiver setado)."""
-    if os.getenv("CB_HF_TOKEN"):
-        return
+    """Carrega api/.env.dev no ambiente (se existir), sem sobrescrever o que já está setado."""
     env_dev = API_DIR / ".env.dev"
     if not env_dev.exists():
         return
@@ -112,6 +113,8 @@ def _norm(text: str) -> str:
 @pytest.fixture(scope="module")
 def e2e(tmp_path_factory: pytest.TempPathFactory) -> dict:
     _load_env_dev()
+    if not os.getenv("CB_GOOGLE_API_KEY"):
+        pytest.skip("CB_GOOGLE_API_KEY ausente — defina em api/.env.dev para rodar o e2e.")
     if not os.getenv("CB_HF_TOKEN"):
         pytest.skip("CB_HF_TOKEN ausente — defina em api/.env.dev para rodar o e2e.")
 
@@ -119,7 +122,7 @@ def e2e(tmp_path_factory: pytest.TempPathFactory) -> dict:
     os.environ["CB_HF_CACHE_DIR"] = str(API_DIR / ".hf_cache")
     os.environ["CB_CHROMA_PATH"] = str(tmp_path_factory.mktemp("chroma_e2e_ingestion"))
     os.environ["CB_CHROMA_COLLECTION"] = "company_brain_e2e_ingestion"
-    os.environ.setdefault("CB_MAX_NEW_TOKENS", "128")
+    os.environ.setdefault("CB_MAX_NEW_TOKENS", "2048")
 
     from app.config import get_settings
     from app.main import create_app

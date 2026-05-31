@@ -1,4 +1,4 @@
-"""Serviço de RAG: orquestra LlamaIndex + ChromaDB + Gemma 4.
+"""Serviço de RAG: orquestra LlamaIndex + ChromaDB + Gemma 4 (Google AI Studio).
 
 Responsável por:
     * manter o índice vetorial persistido no ChromaDB local;
@@ -15,9 +15,9 @@ from llama_index.core import Document
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 from app.config import Settings
-from app.core.gemma import GemmaEngine
 from app.core.ingestion import build_documents_from_file, build_text_document
 from app.core.transcription import WhisperEngine
+from app.core.vision import ImageDescriber
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +31,13 @@ class RAGService:
         *,
         llm: Any,
         embed_model: Any,
-        engine: GemmaEngine,
+        image_describer: ImageDescriber,
         stt_engine: WhisperEngine,
     ) -> None:
         self._settings = settings
         self._llm = llm
         self._embed_model = embed_model
-        self._engine = engine
+        self._image_describer = image_describer
         self._stt_engine = stt_engine
         self._index: Any = None
         self._collection: Any = None
@@ -109,7 +109,7 @@ class RAGService:
         """
         documents = build_documents_from_file(
             path,
-            engine=self._engine,
+            engine=self._image_describer,
             stt_engine=self._stt_engine,
             doc_id=doc_id,
             metadata=metadata,

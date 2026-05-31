@@ -1,8 +1,8 @@
 """Engine de transcrição de áudio (STT) servida pelo Whisper via Hugging Face.
 
 Usa ``openai/whisper-large-v3-turbo`` (multilíngue, 99 idiomas incluindo PT-BR)
-pela pipeline ``automatic-speech-recognition`` do Transformers — o mesmo
-ecossistema usado pelo Gemma 4 e pelos embeddings harrier-oss.
+pela pipeline ``automatic-speech-recognition`` do Transformers, rodando
+localmente na GPU/CPU (o device é resolvido por :mod:`app.core.devices`).
 
 A transcrição preserva **timestamps por segmento**: o texto resultante é uma
 sequência de linhas no formato ``[HH:MM:SS] trecho transcrito``, de modo que a
@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.config import Settings
+from app.core.devices import resolve_device, resolve_torch_dtype
 
 # O Whisper opera com áudio reamostrado a 16 kHz.
 TARGET_SAMPLE_RATE = 16_000
@@ -44,7 +45,6 @@ class WhisperEngine:
         if self.is_loaded:
             return
 
-        import torch
         from transformers import (
             AutoModelForSpeechSeq2Seq,
             AutoProcessor,
@@ -52,8 +52,8 @@ class WhisperEngine:
         )
 
         s = self._settings
-        device = self._resolve_device(s.device)
-        torch_dtype = torch.float16 if device == "cuda" else torch.float32
+        device = resolve_device(s.device)
+        torch_dtype = resolve_torch_dtype(device)
 
         common = {"cache_dir": s.hf_cache_dir, "token": s.hf_token or None}
         model = AutoModelForSpeechSeq2Seq.from_pretrained(
@@ -66,29 +66,20 @@ class WhisperEngine:
         model.to(device)
         processor = AutoProcessor.from_pretrained(s.stt_model, **common)
 
-        self._pipeline = pipeline(
-            "automatic-speech-recognition",
-            model=model,
-            tokenizer=processor.tokenizer,
-            feature_extractor=processor.feature_extractor,
-            chunk_length_s=s.stt_chunk_length_s,
-            torch_dtype=torch_dtype,
-            device=device,
-        )
+        pipeline_kwargs: dict[str, Any] = {
+            "model": model,
+            "tokenizer": processor.tokenizer,
+            "feature_extractor": processor.feature_extractor,
+            "torch_dtype": torch_dtype,
+            "device": device,
+        }
+        # Só ativa a janela deslizante se explicitamente configurada (>0). Por
+        # padrão usamos o long-form nativo do Whisper, que dá timestamps precisos
+        # por segmento (a janela deslizante do transformers colapsa os segmentos).
+        if s.stt_chunk_length_s and s.stt_chunk_length_s > 0:
+            pipeline_kwargs["chunk_length_s"] = s.stt_chunk_length_s
 
-    @staticmethod
-    def _resolve_device(device: str) -> str:
-        """Resolve "auto" para um device concreto (cuda > mps > cpu)."""
-        if device != "auto":
-            return device
-        import torch
-
-        if torch.cuda.is_available():
-            return "cuda"
-        mps = getattr(torch.backends, "mps", None)
-        if mps is not None and mps.is_available():
-            return "mps"
-        return "cpu"
+        self._pipeline = pipeline("automatic-speech-recognition", **pipeline_kwargs)
 
     # ------------------------------------------------------------------ #
     # Transcrição
@@ -97,8 +88,9 @@ class WhisperEngine:
         """Transcreve um arquivo de áudio em texto com timestamps por segmento.
 
         Retorna uma string multi-linha (uma linha ``[HH:MM:SS] texto`` por
-        segmento). Áudios longos (> 30s) são tratados pela janela deslizante da
-        pipeline; o idioma é autodetectado, salvo se ``CB_STT_LANGUAGE`` força um.
+        segmento). Áudios longos são tratados pelo long-form nativo do Whisper
+        (ou pela janela deslizante, se ``CB_STT_CHUNK_LENGTH_S`` > 0); o idioma é
+        autodetectado, salvo se ``CB_STT_LANGUAGE`` força um.
         """
         self.load()
 

@@ -23,25 +23,38 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # Hugging Face
+    # Google AI Studio (Gemini API) — serve o LLM/ingestão multimodal (Gemma 4).
+    # Gere a chave em https://aistudio.google.com/apikey
+    google_api_key: str | None = None
+
+    # Hugging Face — usado apenas pelos modelos que ainda rodam localmente
+    # (Whisper STT e embeddings harrier-oss); o token é opcional para esses.
     hf_token: str | None = None
     hf_cache_dir: str = ".hf_cache"
 
     # Modelos
-    llm_model: str = "google/gemma-4-E2B-it"
+    # LLM/ingestão multimodal servido pela API do Google AI Studio (texto+imagem).
+    llm_model: str = "gemma-4-31b-it"
     embed_model: str = "microsoft/harrier-oss-v1-0.6b"
     # STT (transcrição de áudio): Whisper multilíngue (99 idiomas, inclui PT-BR)
-    # servido pelo ecossistema Hugging Face, como o Gemma e os embeddings.
+    # servido pelo ecossistema Hugging Face (roda localmente, na GPU/CPU).
     stt_model: str = "openai/whisper-large-v3-turbo"
     # Idioma forçado para a transcrição ("portuguese", "english", ...) ou None
     # para detecção automática do Whisper.
     stt_language: str | None = None
-    # Tamanho do chunk (em segundos) para transcrição long-form em janela deslizante.
-    stt_chunk_length_s: int = 30
+    # Chunking da transcrição. 0 = long-form NATIVO do Whisper (recomendado:
+    # timestamps precisos por segmento). >0 ativa a janela deslizante do
+    # transformers (mais rápida em áudios muito longos, porém com timestamps
+    # grosseiros — colapsa segmentos, cf. aviso "experimental" do transformers).
+    stt_chunk_length_s: int = 0
+    # Device dos modelos locais (Whisper/embeddings): "auto", "cuda" (NVIDIA ou
+    # AMD ROCm), "rocm" (alias de cuda), "mps" (Apple) ou "cpu".
     device: str = "auto"
-    dtype: str = "auto"
-    enable_thinking: bool = False
-    max_new_tokens: int = 1024
+    # Limite de tokens gerados pelo LLM (max_output_tokens na API do Google).
+    # Generoso de propósito: o gemma-4-31b-it sempre raciocina ("thinking") e
+    # esse raciocínio consome tokens antes da resposta; um teto baixo termina em
+    # finish_reason=MAX_TOKENS (que o wrapper GoogleGenAI trata como erro).
+    max_new_tokens: int = 2048
 
     # Ingestão de documentos
     # DPI usado pelo pdf2image ao rasterizar páginas de PDF para o Gemma (OCR).

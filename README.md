@@ -19,8 +19,9 @@ Novos serviços (ex.: `web/`, `workers/`) serão adicionados como pastas irmãs 
 | -------------------- | ------------------------------------------------------- |
 | API HTTP             | FastAPI + Uvicorn                                       |
 | Orquestração RAG     | LlamaIndex                                              |
-| LLM / Multimodal     | `google/gemma-4-E2B-it` (texto, imagem, áudio) via HF   |
-| Embeddings           | `microsoft/harrier-oss-v1-0.6b` via HF                  |
+| LLM / Multimodal     | `gemma-4-31b-it` (texto + imagem) via Google AI Studio  |
+| STT (áudio)          | `openai/whisper-large-v3-turbo` via HF (local)          |
+| Embeddings           | `microsoft/harrier-oss-v1-0.6b` via HF (local)          |
 | Vector DB            | ChromaDB (persistência local em disco)                  |
 | Testes               | pytest                                                  |
 
