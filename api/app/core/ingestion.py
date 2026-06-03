@@ -81,10 +81,10 @@ def build_documents_from_file(
     path = Path(path)
     ext = path.suffix.lower()
     base_meta: dict[str, Any] = {
+        **(metadata or {}),
         "source": path.name,
         "document": doc_id,
         "modality": _modality(ext),
-        **(metadata or {}),
     }
 
     if ext in PDF_EXTS:

@@ -14,6 +14,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.rag import DocumentRecord, UpsertResult, _hash_file, _hash_text
+
 
 class FakeRAGService:
     """Implementação em memória do contrato usado pelas rotas."""
@@ -23,19 +25,60 @@ class FakeRAGService:
         self.chat_calls: list[dict[str, Any]] = []
 
     # --- ingestão ---
-    def upsert_text(self, text: str, *, doc_id: str, metadata: dict | None = None) -> str:
-        self.docs[doc_id] = {"text": text, "metadata": metadata or {}}
-        return doc_id
+    def upsert_text(
+        self, text: str, *, doc_id: str, metadata: dict | None = None
+    ) -> UpsertResult:
+        content_hash = _hash_text(text)
+        existing = self.docs.get(doc_id)
+        if existing is not None and existing.get("content_hash") == content_hash:
+            return UpsertResult(doc_ids=[doc_id], skipped=True)
+        self.docs[doc_id] = {
+            "text": text,
+            "metadata": metadata or {},
+            "content_hash": content_hash,
+            "source": doc_id,
+            "modality": "text",
+            "pages": [1],
+        }
+        return UpsertResult(doc_ids=[doc_id], skipped=False)
 
-    def ingest_file(self, path: str, *, doc_id: str, metadata: dict | None = None) -> list[str]:
-        self.docs[doc_id] = {"path": path, "metadata": metadata or {}}
-        return [doc_id]
+    def ingest_file(
+        self, path: str, *, doc_id: str, metadata: dict | None = None
+    ) -> UpsertResult:
+        content_hash = _hash_file(path)
+        existing = self.docs.get(doc_id)
+        if existing is not None and existing.get("content_hash") == content_hash:
+            return UpsertResult(doc_ids=[doc_id], skipped=True)
+        meta = metadata or {}
+        self.docs[doc_id] = {
+            "path": path,
+            "metadata": meta,
+            "content_hash": content_hash,
+            "source": doc_id,
+            "modality": meta.get("modality"),
+            "pages": [1],
+        }
+        return UpsertResult(doc_ids=[doc_id], skipped=False)
 
-    def delete(self, doc_id: str) -> None:
-        self.docs.pop(doc_id, None)
+    def delete(self, doc_id: str) -> bool:
+        return self.docs.pop(doc_id, None) is not None
 
     def count(self) -> int:
         return len(self.docs)
+
+    def list_documents(self) -> list[DocumentRecord]:
+        return [
+            DocumentRecord(
+                doc_id=key,
+                doc_ids=[key],
+                source=data.get("source"),
+                modality=data.get("modality"),
+                pages=data.get("pages", []),
+                chunks=1,
+                content_hash=data.get("content_hash"),
+            )
+            for key, data in sorted(self.docs.items())
+        ]
 
     # --- chat ---
     def chat(

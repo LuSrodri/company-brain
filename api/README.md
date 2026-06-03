@@ -6,9 +6,10 @@ Backend FastAPI do Company Brain: RAG multimodal sobre o conhecimento da empresa
 
 ```
 HTTP (FastAPI)
+  ├── GET  /documents          lista os documentos indexados (agrupados por doc_id)
   ├── POST /documents          upsert de documento textual (JSON)
   ├── POST /documents/upload   upsert multimodal (texto, PDF, imagem, áudio)
-  ├── DELETE /documents/{id}   remove um documento
+  ├── DELETE /documents/{id}   remove um documento inteiro (todas as páginas/abas)
   └── POST /chat               pergunta + histórico -> resposta com fontes
 
 Orquestração (LlamaIndex)
@@ -38,6 +39,23 @@ via `CB_DEVICE` (`app/core/devices.py`):
   pelo ROCm (ex.: RX 580 / Polaris) caem em `cpu` — não há suporte a DirectML
   (ele prenderia o PyTorch em 2.3.1, incompatível com o stack atual).
 - **CPU**: `cpu` (fallback sempre disponível).
+
+### Gerenciamento de documentos
+
+Cada documento lógico é identificado por um `doc_id` estável e gravado nos
+metadados de todos os seus chunks (`document`), junto de `source`, `modality`,
+`page`/`sheet` e `content_hash`. Isso sustenta três operações:
+
+- **Listar** (`GET /documents`): agrega os chunks por `doc_id`, devolvendo
+  fonte, modalidade, páginas e contagem de chunks.
+- **Excluir** (`DELETE /documents/{id}`): remove **todas** as páginas/abas do
+  documento de uma vez (filtro por metadado `document`), sem deixar chunks
+  órfãos.
+- **Update inteligente** (reenviar o mesmo `doc_id`): o `content_hash`
+  (SHA-256 do conteúdo) é comparado antes de processar. Se o arquivo é idêntico,
+  a ingestão é **pulada** (`status: "unchanged"`), evitando re-rodar OCR/STT/
+  embeddings. Se mudou, a versão anterior é substituída por completo
+  (`status: "upserted"`).
 
 ### Ingestão por modalidade
 
@@ -125,6 +143,12 @@ curl -X POST http://localhost:8000/documents \
 # Upload multimodal (áudio via Whisper; pdf/imagem/planilha/docx via Gemma 4)
 curl -X POST http://localhost:8000/documents/upload \
   -F "file=@reuniao.mp3" -F "doc_id=ata-2026-05"
+
+# Listar documentos indexados
+curl http://localhost:8000/documents
+
+# Remover um documento inteiro (todas as páginas/abas)
+curl -X DELETE http://localhost:8000/documents/ata-2026-05
 
 # Chat
 curl -X POST http://localhost:8000/chat \

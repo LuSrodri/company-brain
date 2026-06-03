@@ -57,3 +57,49 @@ def test_delete_document(client: TestClient, fake_service: FakeRAGService) -> No
     resp = client.delete("/documents/tmp")
     assert resp.status_code == 204
     assert "tmp" not in fake_service.docs
+
+
+def test_delete_missing_document_returns_404(client: TestClient) -> None:
+    resp = client.delete("/documents/inexistente")
+    assert resp.status_code == 404
+
+
+def test_list_documents_empty(client: TestClient) -> None:
+    resp = client.get("/documents")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"documents": [], "total_documents": 0, "total_chunks": 0}
+
+
+def test_list_documents_returns_indexed(client: TestClient) -> None:
+    client.post("/documents", json={"doc_id": "a", "text": "alpha"})
+    client.post("/documents", json={"doc_id": "b", "text": "beta"})
+    body = client.get("/documents").json()
+    assert body["total_documents"] == 2
+    ids = [doc["doc_id"] for doc in body["documents"]]
+    assert ids == ["a", "b"]
+    assert body["documents"][0]["modality"] == "text"
+    assert body["documents"][0]["content_hash"]
+
+
+def test_reupsert_same_text_is_unchanged(client: TestClient) -> None:
+    payload = {"doc_id": "doc-x", "text": "mesmo conteúdo"}
+    first = client.post("/documents", json=payload)
+    assert first.json()["status"] == "upserted"
+    second = client.post("/documents", json=payload)
+    assert second.json()["status"] == "unchanged"
+
+
+def test_reupsert_changed_text_is_upserted(client: TestClient) -> None:
+    client.post("/documents", json={"doc_id": "doc-x", "text": "v1"})
+    resp = client.post("/documents", json={"doc_id": "doc-x", "text": "v2"})
+    assert resp.json()["status"] == "upserted"
+
+
+def test_reupload_same_file_is_unchanged(client: TestClient) -> None:
+    args = {
+        "files": {"file": ("notas.txt", b"conteudo identico", "text/plain")},
+        "data": {"doc_id": "notas"},
+    }
+    assert client.post("/documents/upload", **args).json()["status"] == "upserted"
+    assert client.post("/documents/upload", **args).json()["status"] == "unchanged"

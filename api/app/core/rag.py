@@ -8,7 +8,9 @@ Responsável por:
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 from llama_index.core import Document
@@ -20,6 +22,45 @@ from app.core.transcription import WhisperEngine
 from app.core.vision import ImageDescriber
 
 logger = logging.getLogger(__name__)
+
+_HASH_CHUNK = 1 << 20  # 1 MiB
+
+
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _hash_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(_HASH_CHUNK), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+@dataclass
+class UpsertResult:
+    """Resultado de uma ingestão/atualização.
+
+    ``skipped`` é ``True`` quando o conteúdo é idêntico ao já indexado (mesmo
+    hash) e o reprocessamento caro (OCR/STT/embeddings) foi evitado.
+    """
+
+    doc_ids: list[str]
+    skipped: bool = False
+
+
+@dataclass
+class DocumentRecord:
+    """Visão agregada de um documento lógico (agrupado pelo ``doc_id`` base)."""
+
+    doc_id: str
+    doc_ids: list[str] = field(default_factory=list)
+    source: str | None = None
+    modality: str | None = None
+    pages: list[int] = field(default_factory=list)
+    chunks: int = 0
+    content_hash: str | None = None
 
 
 class RAGService:
@@ -84,46 +125,132 @@ class RAGService:
     # ------------------------------------------------------------------ #
     # Ingestão (upsert)
     # ------------------------------------------------------------------ #
-    def upsert_documents(self, documents: list[Document]) -> list[str]:
-        """Insere ou atualiza documentos por ``doc_id`` (idempotente)."""
+    def upsert_documents(self, documents: list[Document], *, doc_id: str) -> list[str]:
+        """Substitui TODOS os chunks do documento base ``doc_id`` pelos novos.
+
+        A limpeza prévia é feita por metadado (``document == doc_id``), o que
+        remove também páginas/abas derivadas (``doc_id:p2`` etc.). Isso evita
+        chunks órfãos quando a nova versão tem menos páginas que a anterior.
+        """
+        self._delete_by_document(doc_id)
         ids: list[str] = []
         for doc in documents:
-            self._delete_if_exists(doc.doc_id)
             self.index.insert(doc)
             ids.append(doc.doc_id)
         return ids
 
     def upsert_text(
         self, text: str, *, doc_id: str, metadata: dict[str, Any] | None = None
-    ) -> str:
-        doc = build_text_document(text, doc_id=doc_id, metadata=metadata)
-        return self.upsert_documents([doc])[0]
+    ) -> UpsertResult:
+        """Insere/atualiza um documento textual; pula se o conteúdo não mudou."""
+        content_hash = _hash_text(text)
+        record = self._document_record(doc_id)
+        if record is not None and record.content_hash == content_hash:
+            return UpsertResult(doc_ids=record.doc_ids, skipped=True)
+
+        meta: dict[str, Any] = {
+            **(metadata or {}),
+            "source": doc_id,
+            "document": doc_id,
+            "modality": "text",
+            "page": 1,
+            "content_hash": content_hash,
+        }
+        doc = build_text_document(text, doc_id=doc_id, metadata=meta)
+        ids = self.upsert_documents([doc], doc_id=doc_id)
+        return UpsertResult(doc_ids=ids, skipped=False)
 
     def ingest_file(
         self, path: str, *, doc_id: str, metadata: dict[str, Any] | None = None
-    ) -> list[str]:
+    ) -> UpsertResult:
         """Ingestão de um arquivo. PDFs viram 1 documento por página.
 
-        Retorna a lista de ``doc_id`` inseridos/atualizados (um por página, no
-        caso de PDF).
+        Se o arquivo for idêntico ao já indexado (mesmo hash de bytes), a
+        ingestão é pulada — evitando rodar OCR/STT/embeddings de novo.
         """
+        content_hash = _hash_file(path)
+        record = self._document_record(doc_id)
+        if record is not None and record.content_hash == content_hash:
+            return UpsertResult(doc_ids=record.doc_ids, skipped=True)
+
         documents = build_documents_from_file(
             path,
             engine=self._image_describer,
             stt_engine=self._stt_engine,
             doc_id=doc_id,
-            metadata=metadata,
+            metadata={**(metadata or {}), "content_hash": content_hash},
         )
-        return self.upsert_documents(documents)
+        ids = self.upsert_documents(documents, doc_id=doc_id)
+        return UpsertResult(doc_ids=ids, skipped=False)
 
-    def delete(self, doc_id: str) -> None:
-        self._delete_if_exists(doc_id)
+    def delete(self, doc_id: str) -> bool:
+        """Remove todos os chunks do documento base ``doc_id``.
+
+        Retorna ``True`` se algo foi removido, ``False`` se o documento não
+        existia (exclusão idempotente).
+        """
+        return self._delete_by_document(doc_id)
 
     def count(self) -> int:
         """Número de chunks (nós) armazenados na coleção."""
         if self._collection is None:
             return 0
         return self._collection.count()
+
+    # ------------------------------------------------------------------ #
+    # Listagem / registro de documentos
+    # ------------------------------------------------------------------ #
+    def list_documents(self) -> list[DocumentRecord]:
+        """Lista os documentos lógicos indexados, agrupados pelo ``doc_id`` base."""
+        if self._collection is None:
+            return []
+        result = self._collection.get(include=["metadatas"])
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for meta in result.get("metadatas") or []:
+            key = meta.get("document")
+            if key is None:
+                continue
+            grouped.setdefault(key, []).append(meta)
+        records = [self._build_record(key, metas) for key, metas in grouped.items()]
+        return sorted(records, key=lambda record: record.doc_id)
+
+    def _document_record(self, doc_id: str) -> DocumentRecord | None:
+        if self._collection is None:
+            return None
+        result = self._collection.get(where={"document": doc_id}, include=["metadatas"])
+        metas = result.get("metadatas") or []
+        if not metas:
+            return None
+        return self._build_record(doc_id, metas)
+
+    @staticmethod
+    def _build_record(doc_id: str, metas: list[dict[str, Any]]) -> DocumentRecord:
+        child_ids: list[str] = []
+        seen: set[str] = set()
+        pages: set[int] = set()
+        content_hash: str | None = None
+        source: str | None = None
+        modality: str | None = None
+        for meta in metas:
+            ref = meta.get("ref_doc_id") or meta.get("doc_id")
+            if ref and ref not in seen:
+                seen.add(ref)
+                child_ids.append(ref)
+            page = meta.get("page")
+            if isinstance(page, int):
+                pages.add(page)
+            content_hash = content_hash or meta.get("content_hash")
+            source = source or meta.get("source")
+            modality = modality or meta.get("modality")
+        return DocumentRecord(
+            doc_id=doc_id,
+            doc_ids=sorted(child_ids),
+            source=source,
+            modality=modality,
+            pages=sorted(pages),
+            chunks=len(metas),
+            content_hash=content_hash,
+        )
 
     # ------------------------------------------------------------------ #
     # Chat
@@ -160,11 +287,21 @@ class RAGService:
     # ------------------------------------------------------------------ #
     # Internos
     # ------------------------------------------------------------------ #
-    def _delete_if_exists(self, doc_id: str) -> None:
-        try:
-            self.index.delete_ref_doc(doc_id, delete_from_docstore=False)
-        except Exception:  # noqa: BLE001 — doc inexistente é esperado no insert inicial
-            logger.debug("Nenhum documento anterior com doc_id=%s para remover", doc_id)
+    def _delete_by_document(self, doc_id: str) -> bool:
+        """Remove do Chroma todos os nós cujo metadado ``document`` é ``doc_id``.
+
+        Cobre o documento inteiro (todas as páginas/abas) em uma operação, ao
+        contrário de ``delete_ref_doc``, que só apagaria o ``doc_id`` exato e
+        deixaria páginas derivadas (``doc_id:p2``) órfãs.
+        """
+        if self._collection is None:
+            return False
+        existing = self._collection.get(where={"document": doc_id})
+        ids = existing.get("ids") or []
+        if not ids:
+            return False
+        self._collection.delete(ids=ids)
+        return True
 
     @staticmethod
     def _to_chat_history(history: list[dict[str, str]]) -> list[ChatMessage]:

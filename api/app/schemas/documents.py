@@ -19,5 +19,24 @@ class DocumentResponse(BaseModel):
     """Resposta após upsert de documento(s)."""
 
     doc_ids: list[str]
-    status: str = "upserted"
+    status: str = Field("upserted", description="'upserted' ou 'unchanged' (conteúdo idêntico).")
     total_chunks: int = Field(..., description="Total de chunks na coleção após a operação.")
+
+
+class DocumentInfo(BaseModel):
+    """Visão agregada de um documento lógico indexado."""
+
+    doc_id: str = Field(..., description="Identificador base do documento.")
+    source: str | None = Field(None, description="Nome do arquivo/fonte original.")
+    modality: str | None = Field(None, description="text, pdf, image, audio, spreadsheet, document.")
+    pages: list[int] = Field(default_factory=list, description="Páginas/abas indexadas.")
+    chunks: int = Field(..., description="Quantidade de chunks (nós) deste documento.")
+    content_hash: str | None = Field(None, description="SHA-256 do conteúdo ingerido.")
+
+
+class DocumentList(BaseModel):
+    """Listagem dos documentos presentes na base de conhecimento."""
+
+    documents: list[DocumentInfo]
+    total_documents: int
+    total_chunks: int

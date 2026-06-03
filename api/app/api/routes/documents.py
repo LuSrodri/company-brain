@@ -18,9 +18,42 @@ from app.api.deps import get_rag_service
 from app.config import get_settings
 from app.core.ingestion import EmptyDocumentError, SUPPORTED_EXTS, UnsupportedFileTypeError
 from app.core.rag import RAGService
-from app.schemas.documents import DocumentIn, DocumentResponse
+from app.schemas.documents import (
+    DocumentIn,
+    DocumentInfo,
+    DocumentList,
+    DocumentResponse,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def _status(skipped: bool) -> str:
+    return "unchanged" if skipped else "upserted"
+
+
+@router.get("", response_model=DocumentList)
+def list_documents(
+    service: Annotated[RAGService, Depends(get_rag_service)],
+) -> DocumentList:
+    """Lista os documentos indexados na base de conhecimento."""
+    records = service.list_documents()
+    documents = [
+        DocumentInfo(
+            doc_id=record.doc_id,
+            source=record.source,
+            modality=record.modality,
+            pages=record.pages,
+            chunks=record.chunks,
+            content_hash=record.content_hash,
+        )
+        for record in records
+    ]
+    return DocumentList(
+        documents=documents,
+        total_documents=len(documents),
+        total_chunks=service.count(),
+    )
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -29,8 +62,12 @@ def upsert_document(
     service: Annotated[RAGService, Depends(get_rag_service)],
 ) -> DocumentResponse:
     """Insere ou atualiza um documento textual identificado por ``doc_id``."""
-    doc_id = service.upsert_text(payload.text, doc_id=payload.doc_id, metadata=payload.metadata)
-    return DocumentResponse(doc_ids=[doc_id], total_chunks=service.count())
+    result = service.upsert_text(payload.text, doc_id=payload.doc_id, metadata=payload.metadata)
+    return DocumentResponse(
+        doc_ids=result.doc_ids,
+        status=_status(result.skipped),
+        total_chunks=service.count(),
+    )
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -60,7 +97,7 @@ def upload_document(
     try:
         with dest.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        ingested_ids = service.ingest_file(str(dest), doc_id=resolved_id, metadata=meta)
+        result = service.ingest_file(str(dest), doc_id=resolved_id, metadata=meta)
     except UnsupportedFileTypeError as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
     except EmptyDocumentError as exc:
@@ -68,7 +105,11 @@ def upload_document(
     finally:
         dest.unlink(missing_ok=True)
 
-    return DocumentResponse(doc_ids=ingested_ids, total_chunks=service.count())
+    return DocumentResponse(
+        doc_ids=result.doc_ids,
+        status=_status(result.skipped),
+        total_chunks=service.count(),
+    )
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -76,7 +117,9 @@ def delete_document(
     doc_id: str,
     service: Annotated[RAGService, Depends(get_rag_service)],
 ) -> None:
-    service.delete(doc_id)
+    """Remove um documento inteiro (todas as páginas/abas) pelo ``doc_id`` base."""
+    if not service.delete(doc_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Documento não encontrado: {doc_id!r}")
 
 
 def _parse_metadata(raw: str | None) -> dict[str, Any]:
