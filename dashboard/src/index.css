@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Company Brain — design tokens (Tailwind v4 CSS-first @theme)
+   Tema "papel quente": claro, lúdico, minimalista e profissional.
+   ────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Superfícies / texto */
+  --color-canvas: #f4efe6;
+  --color-paper: #fffdf8;
+  --color-ink: #221d16;
+  --color-muted: #756c5e;
+  --color-faint: #a89f8f;
+  --color-line: #e8e0d2;
+  --color-line-strong: #ddd2bf;
+
+  /* Acentos da marca */
+  --color-accent: #ef5a3a;
+  --color-accent-deep: #cf4426;
+  --color-accent-soft: #fce4dc;
+  --color-jade: #2c7a6b;
+  --color-jade-soft: #dcefe8;
+
+  /* Cores por modalidade de documento */
+  --color-mod-text: #5b7089;
+  --color-mod-text-soft: #e6ecf3;
+  --color-mod-pdf: #d6537a;
+  --color-mod-pdf-soft: #fbe4ec;
+  --color-mod-image: #c77f24;
+  --color-mod-image-soft: #faecd5;
+  --color-mod-audio: #6366c4;
+  --color-mod-audio-soft: #e7e8f9;
+  --color-mod-spreadsheet: #2e9e6b;
+  --color-mod-spreadsheet-soft: #dbf2e6;
+  --color-mod-document: #3b82c4;
+  --color-mod-document-soft: #dcebf8;
+
+  /* Sombras suaves, lúdicas */
+  --shadow-soft: 0 1px 2px rgba(34, 29, 22, 0.04), 0 8px 24px -12px rgba(34, 29, 22, 0.12);
+  --shadow-lift: 0 2px 4px rgba(34, 29, 22, 0.05), 0 18px 40px -18px rgba(34, 29, 22, 0.22);
+
+  /* Reveals */
+  --animate-rise: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-fade: fade 0.4s ease both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes blink {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 220px 220px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background-color: var(--color-canvas);
+    /* Atmosfera: malha de gradientes quentes + textura de pontos sutil */
+    background-image:
+      radial-gradient(circle at 12% 8%, rgba(239, 90, 58, 0.06), transparent 42%),
+      radial-gradient(circle at 88% 0%, rgba(44, 122, 107, 0.06), transparent 38%),
+      radial-gradient(circle at 50% 120%, rgba(199, 127, 36, 0.05), transparent 50%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-deep);
+  }
+
+  /* Scrollbar enxuta */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-faint);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  /* Textura pontilhada reutilizável */
+  .dot-grid {
+    background-image: radial-gradient(var(--color-line-strong) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Faixa de "pensando" animada */
+  .thinking-dot {
+    animation: blink 1.4s infinite both;
+  }
+
+  /* Markdown renderizado (respostas do assistente) */
+  .prose-brain {
+    line-height: 1.7;
+    word-break: break-word;
+  }
+  .prose-brain > :first-child {
+    margin-top: 0;
+  }
+  .prose-brain > :last-child {
+    margin-bottom: 0;
+  }
+  .prose-brain p {
+    margin: 0.65em 0;
+  }
+  .prose-brain h1,
+  .prose-brain h2,
+  .prose-brain h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 1.1em 0 0.5em;
+  }
+  .prose-brain h1 {
+    font-size: 1.4em;
+  }
+  .prose-brain h2 {
+    font-size: 1.2em;
+  }
+  .prose-brain h3 {
+    font-size: 1.05em;
+  }
+  .prose-brain ul,
+  .prose-brain ol {
+    margin: 0.6em 0;
+    padding-left: 1.4em;
+  }
+  .prose-brain li {
+    margin: 0.3em 0;
+  }
+  .prose-brain ul li::marker {
+    color: var(--color-accent);
+  }
+  .prose-brain a {
+    color: var(--color-accent-deep);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1.5px;
+  }
+  .prose-brain code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    background: var(--color-canvas);
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    padding: 0.1em 0.36em;
+  }
+  .prose-brain pre {
+    font-family: var(--font-mono);
+    font-size: 0.84em;
+    background: #221d16;
+    color: #f4efe6;
+    border-radius: 14px;
+    padding: 0.9em 1.05em;
+    overflow-x: auto;
+    margin: 0.8em 0;
+  }
+  .prose-brain pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: inherit;
+  }
+  .prose-brain blockquote {
+    border-left: 3px solid var(--color-accent);
+    margin: 0.8em 0;
+    padding: 0.1em 0 0.1em 0.9em;
+    color: var(--color-muted);
+    font-style: italic;
+  }
+  .prose-brain table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8em 0;
+    font-size: 0.92em;
+  }
+  .prose-brain th,
+  .prose-brain td {
+    border: 1px solid var(--color-line);
+    padding: 0.45em 0.65em;
+    text-align: left;
+  }
+  .prose-brain th {
+    background: var(--color-canvas);
+    font-weight: 600;
+  }
+  .prose-brain hr {
+    border: 0;
+    border-top: 1px solid var(--color-line);
+    margin: 1.1em 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

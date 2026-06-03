@@ -69,6 +69,24 @@ def test_txt_is_read_directly(tmp_path: Path) -> None:
     assert docs[0].metadata["source"] == "report.txt"
 
 
+def test_content_hash_kept_in_metadata_but_excluded_from_embedding(tmp_path: Path) -> None:
+    """O ``content_hash`` deve ser gravado nos metadados, mas NÃO poluir o embedding."""
+    from llama_index.core.schema import MetadataMode
+
+    f = tmp_path / "report.txt"
+    f.write_text("conteudo semantico relevante", encoding="utf-8")
+
+    docs = _build(f, doc_id="rep", metadata={"content_hash": "deadbeef" * 8})
+    doc = docs[0]
+
+    # Continua disponível para listar/excluir/atualizar...
+    assert doc.metadata["content_hash"] == "deadbeef" * 8
+    # ...mas fora do texto usado para embedding e para o LLM.
+    assert "deadbeef" not in doc.get_content(metadata_mode=MetadataMode.EMBED)
+    assert "deadbeef" not in doc.get_content(metadata_mode=MetadataMode.LLM)
+    assert "conteudo semantico relevante" in doc.get_content(metadata_mode=MetadataMode.EMBED)
+
+
 def test_unsupported_extension_raises(tmp_path: Path) -> None:
     f = tmp_path / "x.exe"
     f.write_bytes(b"\x00")

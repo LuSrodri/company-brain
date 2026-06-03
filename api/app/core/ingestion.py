@@ -58,11 +58,28 @@ class EmptyDocumentError(ValueError):
     """Levantado quando nenhum texto pôde ser extraído do arquivo."""
 
 
+# Metadados de bookkeeping: ficam gravados no nó (para listar/excluir/atualizar),
+# mas NÃO devem entrar no texto embeddado nem no contexto do LLM — são ruído sem
+# valor semântico (ex.: o SHA-256 do conteúdo).
+_NON_SEMANTIC_META = ["content_hash"]
+
+
 def build_text_document(
     text: str, *, doc_id: str, metadata: dict[str, Any] | None = None
 ) -> Document:
-    """Cria um ``Document`` a partir de texto puro, com ``doc_id`` estável."""
-    return Document(text=text, doc_id=doc_id, metadata=metadata or {})
+    """Cria um ``Document`` a partir de texto puro, com ``doc_id`` estável.
+
+    Chaves de bookkeeping (``content_hash``) são mantidas nos metadados, porém
+    excluídas do texto usado para embedding e para o LLM (evita poluir o vetor
+    com o hash).
+    """
+    return Document(
+        text=text,
+        doc_id=doc_id,
+        metadata=metadata or {},
+        excluded_embed_metadata_keys=_NON_SEMANTIC_META,
+        excluded_llm_metadata_keys=_NON_SEMANTIC_META,
+    )
 
 
 def build_documents_from_file(

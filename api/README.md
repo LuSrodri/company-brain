@@ -99,6 +99,19 @@ pip install -e ".[dev]"
 cp .env.example .env              # e edite CB_GOOGLE_API_KEY (e CB_HF_TOKEN se preciso)
 ```
 
+> **O `.env` é obrigatório.** A app lê **apenas** `.env` (veja `env_file` em
+> `app/config.py`); arquivos como `.env.dev`/`.env.local` **não** são carregados
+> automaticamente — só por scripts/testes que os importam de propósito. Todos os
+> `.env*` (menos `.env.example`) estão no `.gitignore`, então em cada checkout/
+> máquina você precisa criar o seu `.env`. Sem a `CB_GOOGLE_API_KEY` no `.env`, o
+> startup falha já no `lifespan` com:
+>
+> ```
+> ValueError: No API key was provided. Please pass a valid API key.
+> ```
+>
+> Se você mantém um `.env.dev`, basta `cp .env.dev .env` para reaproveitar as chaves.
+
 ## Rodar
 
 A forma recomendada pela documentação atual do FastAPI é o CLI `fastapi`, que usa
