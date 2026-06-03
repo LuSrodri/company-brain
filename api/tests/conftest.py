@@ -1,6 +1,6 @@
 """Fixtures de teste.
 
-Os modelos (Gemma 4 / harrier) **não** são carregados: a dependência
+Os modelos (Gemini / Whisper) **não** são carregados: a dependência
 ``get_rag_service`` é sobrescrita por um ``FakeRAGService`` em memória, e o
 ``TestClient`` é usado SEM o gerenciador de contexto, de modo que o ``lifespan``
 (que baixaria os modelos) nunca executa.

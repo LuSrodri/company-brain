@@ -49,7 +49,7 @@ export function Sidebar({
 
       <div className="flex items-center justify-between border-t border-line pt-3">
         <StatusBadge status={health.status} version={health.version} />
-        <span className="font-mono text-[10px] text-faint">RAG · Gemma 4</span>
+        <span className="font-mono text-[10px] text-faint">RAG · Gemini</span>
       </div>
     </aside>
   );

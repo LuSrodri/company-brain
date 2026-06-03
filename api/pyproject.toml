@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "company-brain-api"
 version = "0.1.0"
-description = "Company Brain API — RAG multimodal com gemma-4-31b-it (Google AI Studio), harrier-oss embeddings e ChromaDB"
+description = "Company Brain API — RAG multimodal com gemini-3.1-flash-lite (Google AI Studio), embeddings text-embedding-3-large (OpenAI) e ChromaDB"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -20,23 +20,22 @@ dependencies = [
 
     # RAG / orquestração
     "llama-index-core>=0.12",
-    "llama-index-embeddings-huggingface>=0.4",
+    "llama-index-embeddings-openai>=0.3",
     "llama-index-vector-stores-chroma>=0.4",
 
     # Vector DB
     "chromadb>=0.5",
 
-    # LLM / ingestão multimodal: gemma-4-31b-it via Google AI Studio (Gemini API).
+    # LLM / ingestão multimodal: gemini-3.1-flash-lite via Google AI Studio (Gemini API).
     # Integração oficial do LlamaIndex (wrap do SDK google-genai), tanto para o
     # chat quanto para a descrição multimodal de imagens na ingestão.
     "llama-index-llms-google-genai>=0.1",
     "google-genai>=1.0",
 
-    # Modelos locais (harrier embeddings + Whisper STT) via Hugging Face
+    # Modelo local (Whisper STT) via Hugging Face / transformers
     "transformers>=4.57",
     "torch>=2.3",
     "accelerate>=0.33",
-    "sentence-transformers>=3.0",
     "huggingface-hub>=0.25",
 
     # Multimodal: áudio (STT) e parse de documentos/imagens
@@ -74,7 +73,7 @@ asyncio_mode = "auto"
 # Rode-os com: pytest -m e2e
 addopts = "-q -m 'not e2e'"
 markers = [
-    "e2e: testes end-to-end reais (gemma-4-31b-it via API + Whisper + harrier); exigem CB_GOOGLE_API_KEY, CB_HF_TOKEN e arquivos em tests/e2e_assets",
+    "e2e: testes end-to-end reais (gemini-3.1-flash-lite via API + Whisper local + embeddings OpenAI); exigem CB_GOOGLE_API_KEY, CB_OPENAI_API_KEY, CB_HF_TOKEN e arquivos em tests/e2e_assets",
 ]
 
 [tool.ruff]

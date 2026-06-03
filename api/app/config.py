@@ -23,19 +23,30 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # Google AI Studio (Gemini API) — serve o LLM/ingestão multimodal (Gemma 4).
+    # Google AI Studio (Gemini API) — serve o LLM/ingestão multimodal (Gemini).
     # Gere a chave em https://aistudio.google.com/apikey
     google_api_key: str | None = None
 
-    # Hugging Face — usado apenas pelos modelos que ainda rodam localmente
-    # (Whisper STT e embeddings harrier-oss); o token é opcional para esses.
+    # OpenAI — serve os embeddings (text-embedding-3-large) via API.
+    # Gere a chave em https://platform.openai.com/api-keys
+    openai_api_key: str | None = None
+
+    # Hugging Face — usado apenas pelo modelo que ainda roda localmente
+    # (Whisper STT); o token é opcional para ele.
     hf_token: str | None = None
     hf_cache_dir: str = ".hf_cache"
 
     # Modelos
     # LLM/ingestão multimodal servido pela API do Google AI Studio (texto+imagem).
-    llm_model: str = "gemma-4-31b-it"
-    embed_model: str = "microsoft/harrier-oss-v1-0.6b"
+    llm_model: str = "gemini-3.1-flash-lite"
+    # Embeddings via API da OpenAI (text-embedding-3-large = 3072 dims).
+    embed_model: str = "text-embedding-3-large"
+    # Dimensão dos embeddings: None = nativa do modelo (3072 p/ 3-large). Defina
+    # um valor menor (ex.: 1024) para encurtar via parâmetro `dimensions` da API
+    # (Matryoshka) — troca um pouco de acurácia por vetores menores/baratos.
+    embed_dimensions: int | None = None
+    # Tamanho do lote enviado por requisição à API de embeddings.
+    embed_batch_size: int = 100
     # STT (transcrição de áudio): Whisper multilíngue (99 idiomas, inclui PT-BR)
     # servido pelo ecossistema Hugging Face (roda localmente, na GPU/CPU).
     stt_model: str = "openai/whisper-large-v3-turbo"
@@ -51,7 +62,7 @@ class Settings(BaseSettings):
     # AMD ROCm), "rocm" (alias de cuda), "mps" (Apple) ou "cpu".
     device: str = "auto"
     # Limite de tokens gerados pelo LLM (max_output_tokens na API do Google).
-    # Generoso de propósito: o gemma-4-31b-it sempre raciocina ("thinking") e
+    # Generoso de propósito: o gemini-3.1-flash-lite sempre raciocina ("thinking") e
     # esse raciocínio consome tokens antes da resposta; um teto baixo termina em
     # finish_reason=MAX_TOKENS (que o wrapper GoogleGenAI trata como erro).
     max_new_tokens: int = 2048
@@ -70,7 +81,9 @@ class Settings(BaseSettings):
     # RAG
     chunk_size: int = 1024
     chunk_overlap: int = 128
-    similarity_top_k: int = 4
+    # top_k da recuperação. Base multi-documento pede recall maior; 8 cobre bem
+    # sem estourar contexto/custo (cada chunk ~chunk_size tokens).
+    similarity_top_k: int = 8
 
     # Uploads
     upload_dir: str = "./data/uploads"

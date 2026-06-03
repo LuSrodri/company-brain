@@ -1,6 +1,6 @@
 """Testes de roteamento da ingestão multimodal (``build_documents_from_file``).
 
-Os modelos pesados (Gemma 4 / Whisper) são substituídos por *fakes*; bibliotecas
+Os modelos pesados (Gemini / Whisper) são substituídos por *fakes*; bibliotecas
 de sistema (pdf2image/poppler) são monkeypatchadas. Validamos o roteamento por
 extensão, a paginação e os metadados — sem baixar/rodar modelos reais.
 """

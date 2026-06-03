@@ -2,15 +2,15 @@
 
 Roteamento por tipo de arquivo (ferramentas usadas em cada caso):
     * .txt/.csv/.md/...   -> leitura direta do texto (1 documento, page=1)
-    * .pdf                -> pdf2image rasteriza cada página e o Gemma 4 faz a
+    * .pdf                -> pdf2image rasteriza cada página e o Gemini faz a
                              leitura (OCR + descrição); 1 documento POR PÁGINA,
                              com ``metadata["page"]``
-    * imagem (.png/...)   -> OCR + descrição via Gemma 4 (visão), page=1
+    * imagem (.png/...)   -> OCR + descrição via Gemini (visão), page=1
     * áudio (.mp3/...)    -> transcrição (STT) via Whisper, com timestamps
-    * .xlsx/.xlsm         -> pandas + openpyxl (texto das planilhas) e Gemma 4
+    * .xlsx/.xlsm         -> pandas + openpyxl (texto das planilhas) e Gemini
                              para descrever imagens embutidas; 1 documento por aba
     * .docx               -> MarkItDown (texto) + python-docx (imagens embutidas
-                             descritas pelo Gemma 4); 1 documento, page=1
+                             descritas pelo Gemini); 1 documento, page=1
 """
 
 from __future__ import annotations
@@ -129,12 +129,12 @@ def build_documents_from_file(
 
 
 # --------------------------------------------------------------------------- #
-# PDF: pdf2image (rasteriza) + Gemma 4 (OCR/descrição), 1 documento por página
+# PDF: pdf2image (rasteriza) + Gemini (OCR/descrição), 1 documento por página
 # --------------------------------------------------------------------------- #
 def _pdf_documents(
     path: Path, *, engine: ImageDescriber, doc_id: str, base_meta: dict[str, Any]
 ) -> list[Document]:
-    """Rasteriza cada página do PDF e usa o Gemma 4 para extrair o texto (OCR)."""
+    """Rasteriza cada página do PDF e usa o Gemini para extrair o texto (OCR)."""
     from app.config import get_settings
     from pdf2image import convert_from_path
 
@@ -164,7 +164,7 @@ def _pdf_documents(
 
 
 # --------------------------------------------------------------------------- #
-# XLSX: pandas (texto das abas) + openpyxl (imagens embutidas -> Gemma 4)
+# XLSX: pandas (texto das abas) + openpyxl (imagens embutidas -> Gemini)
 # --------------------------------------------------------------------------- #
 def _xlsx_documents(
     path: Path, *, engine: ImageDescriber, doc_id: str, base_meta: dict[str, Any]
@@ -209,7 +209,7 @@ def _dataframe_to_text(sheet_name: str, frame: Any) -> str:
 
 
 def _xlsx_images(path: Path, *, engine: ImageDescriber) -> dict[str, list[str]]:
-    """Descreve, via Gemma 4, imagens embutidas em cada aba do workbook."""
+    """Descreve, via Gemini, imagens embutidas em cada aba do workbook."""
     descriptions: dict[str, list[str]] = {}
     try:
         from openpyxl import load_workbook
@@ -245,7 +245,7 @@ def _openpyxl_image_bytes(image: Any) -> bytes | None:
 
 
 # --------------------------------------------------------------------------- #
-# DOCX: MarkItDown (texto) + python-docx (imagens embutidas -> Gemma 4)
+# DOCX: MarkItDown (texto) + python-docx (imagens embutidas -> Gemini)
 # --------------------------------------------------------------------------- #
 def _docx_documents(
     path: Path, *, engine: ImageDescriber, doc_id: str, base_meta: dict[str, Any]
@@ -264,7 +264,7 @@ def _docx_documents(
 
 
 def _docx_image_descriptions(path: Path, *, engine: ImageDescriber) -> list[str]:
-    """Descreve, via Gemma 4, as imagens embutidas em um .docx."""
+    """Descreve, via Gemini, as imagens embutidas em um .docx."""
     descriptions: list[str] = []
     try:
         from docx import Document as DocxDocument
@@ -287,10 +287,10 @@ def _docx_image_descriptions(path: Path, *, engine: ImageDescriber) -> list[str]
 
 
 # --------------------------------------------------------------------------- #
-# Helpers de imagem (gravam um arquivo temporário e chamam o Gemma 4)
+# Helpers de imagem (gravam um arquivo temporário e chamam o Gemini)
 # --------------------------------------------------------------------------- #
 def _describe_pil_image(image: Any, *, engine: ImageDescriber, prompt: str) -> str:
-    """Salva uma imagem PIL em arquivo temporário e a descreve via Gemma 4."""
+    """Salva uma imagem PIL em arquivo temporário e a descreve via Gemini."""
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
@@ -301,7 +301,7 @@ def _describe_pil_image(image: Any, *, engine: ImageDescriber, prompt: str) -> s
 
 
 def _describe_image_bytes(data: bytes, *, engine: ImageDescriber, prompt: str) -> str:
-    """Grava bytes de imagem em arquivo temporário e os descreve via Gemma 4."""
+    """Grava bytes de imagem em arquivo temporário e os descreve via Gemini."""
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(data)
         tmp_path = Path(tmp.name)

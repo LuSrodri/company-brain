@@ -81,6 +81,35 @@ def test_list_documents_groups_children_under_base_id(service: RAGService) -> No
     assert records["t1"].modality == "text"
 
 
+def test_chat_returns_answer_and_source_metadata(tmp_path, monkeypatch) -> None:
+    """O chat (com o system prompt de citação) deve responder e devolver as fontes
+    com os metadados de origem (source/page/modality) que sustentam a citação."""
+    from llama_index.core.llms import MockLLM
+
+    monkeypatch.setenv("CB_CHROMA_PATH", str(tmp_path / "chroma_chat"))
+    monkeypatch.setenv("CB_CHROMA_COLLECTION", "chat_test_collection")
+    get_settings.cache_clear()
+    svc = RAGService(
+        get_settings(),
+        llm=MockLLM(max_tokens=32),
+        embed_model=MockEmbedding(embed_dim=8),
+        image_describer=None,  # type: ignore[arg-type]
+        stt_engine=None,  # type: ignore[arg-type]
+    )
+    svc.load()
+    svc.upsert_documents([_page("rep", 3)], doc_id="rep")
+
+    out = svc.chat("o que diz a pagina 3?")
+
+    assert isinstance(out["answer"], str) and out["answer"].strip()
+    assert len(out["sources"]) == 1
+    meta = out["sources"][0]["metadata"]
+    assert meta["source"] == "rep.pdf"
+    assert meta["page"] == 3
+    assert meta["modality"] == "pdf"
+    get_settings.cache_clear()
+
+
 def test_upsert_text_skips_when_unchanged(service: RAGService) -> None:
     first = service.upsert_text("mesmo texto", doc_id="t1")
     assert first.skipped is False

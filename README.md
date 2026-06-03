@@ -8,10 +8,9 @@ sobre o conhecimento da empresa.
 
 ```
 company-brain/
-└── api/        # Backend FastAPI (Python) — RAG, ingestão e chat
+├── api/        # Backend FastAPI (Python) — RAG, ingestão e chat
+└── dashboard/  # Frontend (Vite + React + TS) — chat e gestão de documentos
 ```
-
-Novos serviços (ex.: `web/`, `workers/`) serão adicionados como pastas irmãs de `api/`.
 
 ## Stack do /api
 
@@ -19,10 +18,16 @@ Novos serviços (ex.: `web/`, `workers/`) serão adicionados como pastas irmãs 
 | -------------------- | ------------------------------------------------------- |
 | API HTTP             | FastAPI + Uvicorn                                       |
 | Orquestração RAG     | LlamaIndex                                              |
-| LLM / Multimodal     | `gemma-4-31b-it` (texto + imagem) via Google AI Studio  |
+| LLM / Multimodal     | `gemini-3.1-flash-lite` (texto + imagem) via Google AI Studio |
 | STT (áudio)          | `openai/whisper-large-v3-turbo` via HF (local)          |
-| Embeddings           | `microsoft/harrier-oss-v1-0.6b` via HF (local)          |
+| Embeddings           | `text-embedding-3-large` via OpenAI (API)               |
 | Vector DB            | ChromaDB (persistência local em disco)                  |
 | Testes               | pytest                                                  |
 
-Veja [`api/README.md`](api/README.md) para instruções de execução.
+O chat responde **citando a origem** (arquivo, página, timestamp). Veja
+[`api/README.md`](api/README.md) para execução do backend.
+
+## Stack do /dashboard
+
+Vite 6 · React 19 · TypeScript · Tailwind CSS v4 · lucide-react. Consome o `/api`
+via proxy do Vite (sem CORS). Veja [`dashboard/README.md`](dashboard/README.md).

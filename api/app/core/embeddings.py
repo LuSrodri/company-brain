@@ -1,10 +1,9 @@
-"""Embeddings com ``microsoft/harrier-oss-v1-0.6b`` via LlamaIndex + HuggingFace.
+"""Embeddings via OpenAI ``text-embedding-3-large`` (API).
 
-O harrier-oss exige, conforme o model card, que **apenas a query** receba uma
-instrução no formato ``Instruct: {tarefa}\\nQuery: {texto}``; os documentos são
-embeddados sem instrução. O `HuggingFaceEmbedding` do LlamaIndex aplica
-`query_instruction` somente no caminho de busca, o que reproduz exatamente esse
-comportamento.
+Diferente do antigo harrier-oss (local, com instrução só na query), os embeddings
+da OpenAI rodam na nuvem e não exigem device/instrução: o mesmo modelo embeda
+documentos e queries. A dimensão padrão do ``text-embedding-3-large`` é 3072;
+pode ser encurtada via ``embed_dimensions`` (parâmetro ``dimensions`` da API).
 """
 
 from __future__ import annotations
@@ -12,32 +11,26 @@ from __future__ import annotations
 from llama_index.core.base.embeddings.base import BaseEmbedding
 
 from app.config import Settings
-from app.core.devices import resolve_device
-
-# Instrução recomendada pelo model card do harrier-oss para recuperação.
-RETRIEVAL_TASK = "Given a web search query, retrieve relevant passages that answer the query"
-QUERY_INSTRUCTION = f"Instruct: {RETRIEVAL_TASK}\nQuery: "
 
 
 def build_embed_model(settings: Settings) -> BaseEmbedding:
-    """Instancia o modelo de embeddings harrier-oss.
+    """Instancia o modelo de embeddings da OpenAI.
 
-    Import de `HuggingFaceEmbedding` é feito aqui dentro para manter o import do
-    módulo barato (evita carregar torch/sentence-transformers em testes que
-    fazem mock da camada de modelos).
+    Import de ``OpenAIEmbedding`` é feito aqui dentro para manter o import do
+    módulo barato (evita carregar o SDK em testes que mockam a camada de modelos).
+    A chave vem de ``CB_OPENAI_API_KEY`` (ou, na falta, do ``OPENAI_API_KEY`` lido
+    pelo próprio SDK).
     """
-    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+    from llama_index.embeddings.openai import OpenAIEmbedding
 
-    # Resolve "auto"/"rocm" em um device concreto (cuda/mps/cpu) compartilhado
-    # com o Whisper — cobre NVIDIA, AMD ROCm e fallback CPU.
-    device = resolve_device(settings.device)
+    kwargs: dict = {
+        "model": settings.embed_model,
+        "api_key": settings.openai_api_key,
+        "embed_batch_size": settings.embed_batch_size,
+    }
+    # Só passa `dimensions` quando o usuário pediu encurtamento; None usa a
+    # dimensão nativa do modelo (3072 para o text-embedding-3-large).
+    if settings.embed_dimensions is not None:
+        kwargs["dimensions"] = settings.embed_dimensions
 
-    return HuggingFaceEmbedding(
-        model_name=settings.embed_model,
-        device=device,
-        cache_folder=settings.hf_cache_dir,
-        # harrier-oss: instrução só na query, documentos sem instrução.
-        query_instruction=QUERY_INSTRUCTION,
-        text_instruction=None,
-        trust_remote_code=True,
-    )
+    return OpenAIEmbedding(**kwargs)

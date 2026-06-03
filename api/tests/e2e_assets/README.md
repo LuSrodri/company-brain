@@ -2,7 +2,7 @@
 
 Coloque aqui os arquivos reais usados pelo `tests/test_e2e_ingestion.py`. Cada
 caso é ingerido via `POST /documents/upload` e consultado via `POST /chat` com
-modelos reais (Gemma 4 + Whisper + harrier).
+modelos reais (Gemini 3.1 Flash-Lite + Whisper local + embeddings OpenAI).
 
 Arquivos esperados (exatamente estes nomes):
 

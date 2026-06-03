@@ -80,7 +80,7 @@ def upload_document(
     doc_id: Annotated[str | None, Form()] = None,
     metadata: Annotated[str | None, Form(description="JSON opcional de metadados.")] = None,
 ) -> DocumentResponse:
-    """Ingestão multimodal: texto direto; PDF/imagem/xlsx/docx via Gemma 4; áudio via Whisper."""
+    """Ingestão multimodal: texto direto; PDF/imagem/xlsx/docx via Gemini; áudio via Whisper."""
     settings = get_settings()
     ext = Path(file.filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTS:

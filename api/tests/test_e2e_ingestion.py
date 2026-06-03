@@ -4,16 +4,16 @@ Cobre as 6 modalidades suportadas usando **arquivos reais** colocados em
 ``tests/e2e_assets/`` (veja o README de lá). Para cada arquivo:
 
 1. faz upload via ``POST /documents/upload`` (passando pelo pipeline real:
-   pdf2image+Gemma 4 para PDF, Whisper para áudio, Gemma 4 para imagens,
+   pdf2image+Gemini para PDF, Whisper para áudio, Gemini para imagens,
    pandas/openpyxl para xlsx, MarkItDown/python-docx para docx);
 2. faz uma pergunta via ``POST /chat``.
 
-Requisito inegociável (OBS do enunciado): **a resposta gerada pelo Gemma 4 nunca
+Requisito inegociável (OBS do enunciado): **a resposta gerada pelo Gemini nunca
 pode estar vazia**. Além disso, validamos que o parágrafo esperado (e, quando
 aplicável, a página/timestamp) aparece nas fontes recuperadas.
 
-Pesado e com rede: chama o ``gemma-4-31b-it`` via Google AI Studio e baixa/carrega
-Whisper + harrier localmente. Fora da suíte padrão:
+Pesado e com rede: chama o ``gemini-3.1-flash-lite`` via Google AI Studio + embeddings
+da OpenAI, e baixa/carrega o Whisper localmente. Fora da suíte padrão:
 
     pytest -m e2e -s
 
@@ -115,6 +115,8 @@ def e2e(tmp_path_factory: pytest.TempPathFactory) -> dict:
     _load_env_dev()
     if not os.getenv("CB_GOOGLE_API_KEY"):
         pytest.skip("CB_GOOGLE_API_KEY ausente — defina em api/.env.dev para rodar o e2e.")
+    if not os.getenv("CB_OPENAI_API_KEY"):
+        pytest.skip("CB_OPENAI_API_KEY ausente — defina em api/.env.dev para rodar o e2e.")
     if not os.getenv("CB_HF_TOKEN"):
         pytest.skip("CB_HF_TOKEN ausente — defina em api/.env.dev para rodar o e2e.")
 
@@ -164,7 +166,7 @@ def test_chat_retrieves_expected_content(e2e: dict, case: dict) -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # OBS inegociável: a resposta gerada pelo Gemma 4 NUNCA pode estar vazia.
+    # OBS inegociável: a resposta gerada pelo Gemini NUNCA pode estar vazia.
     assert isinstance(body["answer"], str) and body["answer"].strip(), (
         f"resposta vazia para o caso '{case['id']}'"
     )

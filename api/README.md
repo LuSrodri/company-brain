@@ -13,10 +13,10 @@ HTTP (FastAPI)
   └── POST /chat               pergunta + histórico -> resposta com fontes
 
 Orquestração (LlamaIndex)
-  ├── GoogleGenAI        gemma-4-31b-it via Google AI Studio (chat; texto+imagem)
+  ├── GoogleGenAI        gemini-3.1-flash-lite via Google AI Studio (chat; texto+imagem)
   ├── ImageDescriber     usa o GoogleGenAI p/ OCR/descrição de imagens na ingestão
   ├── WhisperEngine      openai/whisper-large-v3-turbo (STT local, c/ timestamps)
-  ├── HuggingFaceEmbedding   microsoft/harrier-oss-v1-0.6b (local; instrução só na query)
+  ├── OpenAIEmbedding    text-embedding-3-large (API; 3072 dims)
   └── ChromaVectorStore  ChromaDB com PersistentClient (persistência local)
 ```
 
@@ -25,12 +25,15 @@ O LLM é o `GoogleGenAI` da integração **oficial** `llama-index-llms-google-ge
 multimodal de imagens da ingestão (via `ImageDescriber`, que monta uma
 `ChatMessage` com `ImageBlock` + `TextBlock`). A transcrição de áudio fica a cargo
 da `WhisperEngine` (Whisper multilíngue via Hugging Face, local), com timestamps.
+Os **embeddings** são servidos pela API da OpenAI (`text-embedding-3-large`, 3072
+dims; encurtáveis via `CB_EMBED_DIMENSIONS`) — o mesmo modelo embeda documentos e
+queries, sem instrução nem device.
 
-### Device dos modelos locais (NVIDIA / AMD / CPU)
+### Device do modelo local (NVIDIA / AMD / CPU)
 
-O LLM/ingestão multimodal roda na nuvem (Google AI Studio). Quem ainda roda
-localmente — **Whisper (STT)** e **embeddings (harrier-oss)** — escolhe o device
-via `CB_DEVICE` (`app/core/devices.py`):
+LLM/ingestão (Google AI Studio) e embeddings (OpenAI) rodam na nuvem. O único
+modelo que ainda roda localmente — **Whisper (STT)** — escolhe o device via
+`CB_DEVICE` (`app/core/devices.py`):
 
 - `auto` (padrão): `cuda` → `mps` → `cpu`.
 - **NVIDIA**: CUDA (`cuda`).
@@ -64,21 +67,23 @@ Cada tipo de arquivo é roteado para a ferramenta adequada em `app/core/ingestio
 | Tipo                | Ferramenta                                              | Saída                          |
 | ------------------- | ------------------------------------------------------- | ------------------------------ |
 | `.txt/.csv/.md/...` | leitura direta de texto                                 | 1 documento (`page=1`)         |
-| `.pdf`              | **pdf2image** rasteriza + **Gemma 4** (API, OCR/descrição) | 1 documento **por página**     |
-| imagem (`.png/...`) | **Gemma 4** (API, visão: OCR + descrição)               | 1 documento (`page=1`)         |
+| `.pdf`              | **pdf2image** rasteriza + **Gemini 3.1 Flash-Lite** (API, OCR/descrição) | 1 documento **por página**     |
+| imagem (`.png/...`) | **Gemini 3.1 Flash-Lite** (API, visão: OCR + descrição)               | 1 documento (`page=1`)         |
 | áudio (`.mp3/...`)  | **Whisper** (`large-v3-turbo`, multilíngue) c/ timestamps | 1 documento (`[HH:MM:SS] ...`) |
-| `.xlsx/.xlsm`       | **pandas + openpyxl** (texto) + **Gemma 4** (API, imagens) | 1 documento **por aba**        |
-| `.docx`             | **MarkItDown + python-docx** (imagens) + **Gemma 4** (API) | 1 documento (`page=1`)         |
+| `.xlsx/.xlsm`       | **pandas + openpyxl** (texto) + **Gemini 3.1 Flash-Lite** (API, imagens) | 1 documento **por aba**        |
+| `.docx`             | **MarkItDown + python-docx** (imagens) + **Gemini 3.1 Flash-Lite** (API) | 1 documento (`page=1`)         |
 
 ## Pré-requisitos
 
 - Python 3.11+
 - **Chave do Google AI Studio** (`CB_GOOGLE_API_KEY`) para o LLM/ingestão
-  multimodal (`gemma-4-31b-it`). Gere em <https://aistudio.google.com/apikey>.
-- Token do Hugging Face (`CB_HF_TOKEN`) — opcional, usado só pelos modelos
-  locais (Whisper STT e embeddings harrier-oss).
-- GPU recomendada para Whisper/embeddings; CPU funciona, porém lento. Veja a
-  seção *Device* sobre NVIDIA/AMD/CPU.
+  multimodal (`gemini-3.1-flash-lite`). Gere em <https://aistudio.google.com/apikey>.
+- **Chave da OpenAI** (`CB_OPENAI_API_KEY`) para os embeddings
+  (`text-embedding-3-large`). Gere em <https://platform.openai.com/api-keys>.
+- Token do Hugging Face (`CB_HF_TOKEN`) — opcional, usado só pelo modelo local
+  (Whisper STT).
+- GPU recomendada para o Whisper; CPU funciona, porém lento. Veja a seção
+  *Device* sobre NVIDIA/AMD/CPU.
 - **poppler** (necessário pelo `pdf2image` para rasterizar PDFs):
   - Linux: `apt-get install poppler-utils`
   - macOS: `brew install poppler`
@@ -139,11 +144,11 @@ Docs interativas em `http://localhost:8000/docs`.
 > antes do `fastapi run`. Alternativa: usar `uvicorn app.main:app`, que não tem
 > esse banner.
 
-> **Produção / replicação.** O LLM roda na nuvem (Google AI Studio), então o
-> processo local carrega apenas Whisper + embeddings. Ainda assim, esses modelos
-> ocupam RAM/VRAM e são carregados uma vez no `lifespan`; ao escalar, prefira
-> **1 worker por GPU** em réplicas/containers (atrás de um proxy TLS) a vários
-> workers no mesmo processo, e proteja sua cota da API contra concorrência alta.
+> **Produção / replicação.** LLM (Google AI Studio) e embeddings (OpenAI) rodam
+> na nuvem, então o processo local carrega apenas o Whisper. Ainda assim, ele
+> ocupa RAM/VRAM e é carregado uma vez no `lifespan`; ao escalar, prefira **1
+> worker por GPU** em réplicas/containers (atrás de um proxy TLS) a vários
+> workers no mesmo processo, e proteja suas cotas de API contra concorrência alta.
 
 ### Exemplos
 
@@ -153,7 +158,7 @@ curl -X POST http://localhost:8000/documents \
   -H "Content-Type: application/json" \
   -d '{"doc_id":"manual-rh","text":"Funcionários têm 30 dias de férias.","metadata":{"area":"rh"}}'
 
-# Upload multimodal (áudio via Whisper; pdf/imagem/planilha/docx via Gemma 4)
+# Upload multimodal (áudio via Whisper; pdf/imagem/planilha/docx via Gemini 3.1 Flash-Lite)
 curl -X POST http://localhost:8000/documents/upload \
   -F "file=@reuniao.mp3" -F "doc_id=ata-2026-05"
 
@@ -177,9 +182,9 @@ Os testes unitários usam um `FakeRAGService`/engines *fake* e **não** baixam m
 pytest
 ```
 
-Os testes **end-to-end** (reais: `gemma-4-31b-it` via API + Whisper + harrier)
-ficam fora da suíte padrão. Eles exigem `CB_GOOGLE_API_KEY` e `CB_HF_TOKEN` (em
-`.env.dev` ou no ambiente) e os arquivos reais em
+Os testes **end-to-end** (reais: `gemini-3.1-flash-lite` via API + Whisper local +
+embeddings OpenAI) ficam fora da suíte padrão. Eles exigem `CB_GOOGLE_API_KEY`,
+`CB_OPENAI_API_KEY` e `CB_HF_TOKEN` (em `.env.dev` ou no ambiente) e os arquivos reais em
 [`tests/e2e_assets/`](tests/e2e_assets/README.md) (o caso de PDF também precisa
 do poppler). Rode com:
 
@@ -190,6 +195,7 @@ pytest -m e2e -s
 ## Configuração
 
 Todas as variáveis usam o prefixo `CB_` — veja [`.env.example`](.env.example).
-Principais: `CB_GOOGLE_API_KEY`, `CB_LLM_MODEL`, `CB_HF_TOKEN`, `CB_EMBED_MODEL`,
+Principais: `CB_GOOGLE_API_KEY`, `CB_OPENAI_API_KEY`, `CB_LLM_MODEL`,
+`CB_EMBED_MODEL`, `CB_EMBED_DIMENSIONS`, `CB_EMBED_BATCH_SIZE`, `CB_HF_TOKEN`,
 `CB_STT_MODEL`, `CB_STT_LANGUAGE`, `CB_DEVICE`, `CB_CHROMA_PATH`,
 `CB_SIMILARITY_TOP_K`, `CB_MAX_NEW_TOKENS`, `CB_PDF_DPI`, `CB_POPPLER_PATH`.

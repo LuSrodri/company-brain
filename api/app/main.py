@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Inicializa o RAGService (Gemma via Google AI Studio + harrier + Chroma) no startup."""
+    """Inicializa o RAGService (Gemini via Google AI Studio + Whisper + Chroma) no startup."""
     settings = get_settings()
     settings.ensure_dirs()
 
@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Company Brain API",
         version=__version__,
-        description="RAG multimodal com gemma-4-31b-it (Google AI Studio), harrier-oss embeddings e ChromaDB.",
+        description="RAG multimodal com gemini-3.1-flash-lite (Google AI Studio), embeddings text-embedding-3-large (OpenAI) e ChromaDB.",
         lifespan=lifespan,
     )
     app.include_router(health.router)

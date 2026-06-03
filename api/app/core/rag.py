@@ -1,9 +1,9 @@
-"""Serviço de RAG: orquestra LlamaIndex + ChromaDB + Gemma 4 (Google AI Studio).
+"""Serviço de RAG: orquestra LlamaIndex + ChromaDB + Gemini (Google AI Studio).
 
 Responsável por:
     * manter o índice vetorial persistido no ChromaDB local;
     * fazer *upsert* (inserir/atualizar) de documentos por ``doc_id``;
-    * responder ao chat usando recuperação + Gemma 4.
+    * responder ao chat usando recuperação + Gemini.
 """
 
 from __future__ import annotations
@@ -24,6 +24,24 @@ from app.core.vision import ImageDescriber
 logger = logging.getLogger(__name__)
 
 _HASH_CHUNK = 1 << 20  # 1 MiB
+
+# Orienta o LLM a citar a origem dos trechos recuperados. Os metadados de cada
+# nó (source, page, sheet, modality) entram no contexto, e áudios trazem o
+# timestamp [HH:MM:SS] no próprio texto — então o modelo tem o que citar.
+CITATION_SYSTEM_PROMPT = (
+    "Você é o assistente da base de conhecimento da empresa. Use apenas as "
+    "informações do contexto recuperado e responda no mesmo idioma da pergunta.\n"
+    "Sempre que afirmar algo, cite a origem entre parênteses, com os campos "
+    "disponíveis:\n"
+    "- nome do arquivo (metadado 'source');\n"
+    "- página (metadado 'page') ou aba (metadado 'sheet'), quando houver;\n"
+    "- para áudio, o timestamp [HH:MM:SS] que aparece no próprio trecho;\n"
+    "- quando ajudar, cite o trecho exato entre aspas.\n"
+    "Exemplos: (Relatório.pdf, p. 3) · (Notas.xlsx, aba 'Notas') · "
+    "(Reunião.mp3, 00:00:51).\n"
+    "Se a informação não estiver no contexto, diga claramente que não a "
+    "encontrou na base. Nunca invente fontes nem dados."
+)
 
 
 def _hash_text(text: str) -> str:
@@ -262,7 +280,7 @@ class RAGService:
         history: list[dict[str, str]] | None = None,
         top_k: int | None = None,
     ) -> dict[str, Any]:
-        """Responde a uma mensagem usando recuperação + Gemma 4.
+        """Responde a uma mensagem usando recuperação + Gemini.
 
         Retorna a resposta e as fontes (chunks) recuperadas.
         """
@@ -270,6 +288,7 @@ class RAGService:
             chat_mode="context",
             llm=self._llm,
             similarity_top_k=top_k or self._settings.similarity_top_k,
+            system_prompt=CITATION_SYSTEM_PROMPT,
         )
         chat_history = self._to_chat_history(history or [])
         response = chat_engine.chat(message, chat_history=chat_history)

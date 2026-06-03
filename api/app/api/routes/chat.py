@@ -18,7 +18,7 @@ def chat(
     payload: ChatRequest,
     service: Annotated[RAGService, Depends(get_rag_service)],
 ) -> ChatResponse:
-    """Responde à mensagem usando RAG (recuperação no Chroma + Gemma 4)."""
+    """Responde à mensagem usando RAG (recuperação no Chroma + Gemini)."""
     result = service.chat(
         payload.message,
         history=[turn.model_dump() for turn in payload.history],
