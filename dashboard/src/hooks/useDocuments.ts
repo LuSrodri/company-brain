@@ -99,7 +99,7 @@ export function useDocuments(): DocumentsState {
       setDocuments((prev) => prev.filter((d) => d.doc_id !== doc.doc_id));
       try {
         await api.deleteDocument(doc.doc_id);
-        push("success", `Documento removido: ${doc.source ?? doc.doc_id}`);
+        push("success", `Documento removido: ${doc.doc_id || doc.source || "Documento"}`);
         await refresh();
       } catch (err) {
         setDocuments(snapshot); // rollback

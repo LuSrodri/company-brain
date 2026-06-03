@@ -1,10 +1,10 @@
 import { Sparkles } from "lucide-react";
 
 const SUGGESTIONS = [
-  "Resuma os principais achados do último relatório.",
-  "Quais políticas internas mencionam férias?",
-  "O que foi discutido sobre segurança nos documentos?",
-  "Liste os pontos de ação do material que enviei.",
+  "Resuma o último relatório.",
+  "Quais são as políticas internas?",
+  "O que foi discutido na reunião?",
+  "Liste os pontos descritos nos materiais.",
 ];
 
 export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
