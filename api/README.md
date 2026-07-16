@@ -1,6 +1,12 @@
 # Company Brain — API
 
+[![CI](https://github.com/LuSrodri/company-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/LuSrodri/company-brain/actions/workflows/ci.yml)
+
 Backend FastAPI do Company Brain: RAG multimodal sobre o conhecimento da empresa.
+
+> Panorama dos **desafios de engenharia** (alucinação, custo, latência, edge
+> cases) e das **métricas de qualidade** no [README do monorepo](../README.md).
+> Aqui: arquitetura, execução e configuração.
 
 ## Arquitetura
 
@@ -174,22 +180,45 @@ curl -X POST http://localhost:8000/chat \
   -d '{"message":"Quantos dias de férias eu tenho?"}'
 ```
 
+## Guardrails e observabilidade
+
+- **Anti-alucinação.** O system prompt (`app/core/rag.py`) prende o modelo ao
+  contexto recuperado, obriga citar a fonte e manda dizer que **não encontrou**
+  em vez de inventar. Toda resposta de `/chat` devolve os `sources` que a
+  sustentam, para verificação humana.
+- **Latência.** `RAGService.chat` mede a latência server-side (recuperação +
+  geração) e a expõe como `latency_ms` no corpo da resposta e no log — base para
+  os percentis p50/p95 da avaliação.
+
 ## Testes
 
-Os testes unitários usam um `FakeRAGService`/engines *fake* e **não** baixam modelos:
+Três camadas, do mais rápido ao mais caro:
+
+**1. Unitários** — usam `FakeRAGService`/engines *fake* (ou um ChromaDB real com
+LLM/embeddings *mock*) e **não** baixam modelos nem exigem chaves. É o que roda no
+CI a cada push:
 
 ```bash
 pytest
 ```
 
-Os testes **end-to-end** (reais: `gemini-3.1-flash-lite` via API + Whisper local +
-embeddings OpenAI) ficam fora da suíte padrão. Eles exigem `CB_GOOGLE_API_KEY`,
-`CB_OPENAI_API_KEY` e `CB_HF_TOKEN` (em `.env.dev` ou no ambiente) e os arquivos reais em
-[`tests/e2e_assets/`](tests/e2e_assets/README.md) (o caso de PDF também precisa
-do poppler). Rode com:
+**2. End-to-end** (`-m e2e`) — pipeline real: `gemini-3.1-flash-lite` via API +
+Whisper local + embeddings OpenAI. Exigem `CB_GOOGLE_API_KEY`,
+`CB_OPENAI_API_KEY` e `CB_HF_TOKEN` (em `.env.dev` ou no ambiente) e os arquivos
+reais em [`tests/e2e_assets/`](tests/e2e_assets/README.md) (o caso de PDF também
+precisa do poppler):
 
 ```bash
 pytest -m e2e -s
+```
+
+**3. Avaliação de qualidade** ([`evals/`](evals/README.md)) — mede
+assertividade (retrieval hit rate, correção via LLM-as-judge, citação),
+segurança (recusa fora de escopo, resistência a prompt injection) e latência
+(p50/p95). Mesmos requisitos do e2e; gera `evals/results/latest.md` e `.json`:
+
+```bash
+python -m evals.run
 ```
 
 ## Configuração
