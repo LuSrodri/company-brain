@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -291,7 +292,9 @@ class RAGService:
             system_prompt=CITATION_SYSTEM_PROMPT,
         )
         chat_history = self._to_chat_history(history or [])
+        started = time.perf_counter()
         response = chat_engine.chat(message, chat_history=chat_history)
+        latency_ms = (time.perf_counter() - started) * 1000.0
 
         sources = [
             {
@@ -301,7 +304,8 @@ class RAGService:
             }
             for node in getattr(response, "source_nodes", [])
         ]
-        return {"answer": str(response), "sources": sources}
+        logger.info("chat respondido em %.0f ms (%d fontes)", latency_ms, len(sources))
+        return {"answer": str(response), "sources": sources, "latency_ms": latency_ms}
 
     # ------------------------------------------------------------------ #
     # Internos

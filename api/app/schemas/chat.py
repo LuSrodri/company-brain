@@ -33,3 +33,6 @@ class Source(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[Source] = Field(default_factory=list)
+    latency_ms: float | None = Field(
+        default=None, description="Latência server-side do chat (recuperação + geração), em ms."
+    )

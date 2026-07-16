@@ -89,7 +89,11 @@ class FakeRAGService:
             {"text": d.get("text", ""), "score": 0.9, "metadata": d["metadata"]}
             for d in self.docs.values()
         ]
-        return {"answer": f"Resposta simulada para: {message}", "sources": sources}
+        return {
+            "answer": f"Resposta simulada para: {message}",
+            "sources": sources,
+            "latency_ms": 0.0,
+        }
 
 
 @pytest.fixture(scope="session", autouse=True)

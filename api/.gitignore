@@ -8,6 +8,7 @@
 # Local artifacts específicos do /api
 .venv/
 chroma_db/
+.chroma_evals/
 data/
 .hf_cache/
 .poppler/
