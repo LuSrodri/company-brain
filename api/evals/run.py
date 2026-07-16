@@ -92,6 +92,56 @@ def _sources_text(body: dict[str, Any]) -> str:
     return "\n".join(s.get("text", "") for s in body.get("sources", []))
 
 
+# Paceamento entre chamadas ao LLM: o tier do Gemini limita requisições por
+# minuto; cada caso dispara geração + juiz. Um respiro curto entre chamadas +
+# backoff no 429 mantém a avaliação estável sem exigir cota alta.
+_PACE_SECONDS = float(os.getenv("CB_EVAL_PACE_SECONDS", "3"))
+_BACKOFF_SECONDS = float(os.getenv("CB_EVAL_BACKOFF_SECONDS", "30"))
+_MAX_RETRIES = int(os.getenv("CB_EVAL_MAX_RETRIES", "4"))
+
+
+def _post_chat(client: Any, message: str) -> dict[str, Any]:
+    """POST /chat com backoff em 429/5xx (rate limit do LLM). Retorna o corpo JSON."""
+    for attempt in range(_MAX_RETRIES + 1):
+        resp = client.post("/chat", json={"message": message})
+        if resp.status_code == 200:
+            time.sleep(_PACE_SECONDS)
+            return resp.json()
+        if resp.status_code in (429, 500, 503) and attempt < _MAX_RETRIES:
+            wait = _BACKOFF_SECONDS * (attempt + 1)
+            print(
+                f"[evals] /chat HTTP {resp.status_code}; backoff {wait:.0f}s "
+                f"(tentativa {attempt + 1}/{_MAX_RETRIES})",
+                file=sys.stderr,
+            )
+            time.sleep(wait)
+            continue
+        raise RuntimeError(f"/chat falhou (HTTP {resp.status_code}): {resp.text[:200]}")
+    raise RuntimeError("/chat esgotou as tentativas de retry")
+
+
+def _judge_with_retry(judge: LLMJudge, *, question: str, reference: str, answer: str) -> Any:
+    """Chama o LLM-as-judge com backoff em erros transitórios (rate limit)."""
+    from evals.metrics import JudgeVerdict
+
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            verdict = judge.judge(question=question, reference=reference, answer=answer)
+            time.sleep(_PACE_SECONDS)
+            return verdict
+        except Exception as exc:  # noqa: BLE001 — trata 429/5xx do provider
+            if attempt >= _MAX_RETRIES:
+                return JudgeVerdict(correct=False, reason=f"juiz falhou: {exc}")
+            wait = _BACKOFF_SECONDS * (attempt + 1)
+            print(
+                f"[evals] juiz falhou ({exc}); backoff {wait:.0f}s "
+                f"(tentativa {attempt + 1}/{_MAX_RETRIES})",
+                file=sys.stderr,
+            )
+            time.sleep(wait)
+    return JudgeVerdict(correct=False, reason="juiz esgotou as tentativas de retry")
+
+
 def run(keep_collection: bool = False) -> dict[str, Any]:
     _load_env_dev()
     _require_keys()
@@ -116,8 +166,10 @@ def run(keep_collection: bool = False) -> dict[str, Any]:
     oos_rows: list[dict[str, Any]] = []
     injection_rows: list[dict[str, Any]] = []
 
+    # raise_server_exceptions=False: uma falha de ingestão num caso (ex.: poppler
+    # ausente no PDF) vira um HTTP 500 tratável, sem abortar a avaliação inteira.
     print("[evals] subindo a API e carregando modelos...", file=sys.stderr)
-    with TestClient(app) as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         judge = _build_judge()
 
         # ---------------- Ingestão dos assets (grounded) ---------------- #
@@ -150,15 +202,15 @@ def run(keep_collection: bool = False) -> dict[str, Any]:
             if not available.get(case.id):
                 grounded_rows.append({"id": case.id, "modality": case.modality, "skipped": True})
                 continue
-            resp = client.post("/chat", json={"message": case.question})
-            body = resp.json()
+            body = _post_chat(client, case.question)
             answer = body.get("answer", "")
             lat = body.get("latency_ms")
             if lat is not None:
                 latencies.append(lat)
             hit = retrieval_hit(case.expect, _sources_text(body))
             cited = citation_present(answer, case.citation_hint)
-            verdict = judge.judge(
+            verdict = _judge_with_retry(
+                judge,
                 question=case.question,
                 reference=" / ".join(case.expect),
                 answer=answer,
@@ -179,8 +231,7 @@ def run(keep_collection: bool = False) -> dict[str, Any]:
         # ---------------- Segurança: recusa fora de escopo ---------------- #
         print("[evals] avaliando segurança (recusa fora de escopo)...", file=sys.stderr)
         for oos in dataset.OUT_OF_SCOPE:
-            resp = client.post("/chat", json={"message": oos.question})
-            body = resp.json()
+            body = _post_chat(client, oos.question)
             lat = body.get("latency_ms")
             if lat is not None:
                 latencies.append(lat)
@@ -190,8 +241,7 @@ def run(keep_collection: bool = False) -> dict[str, Any]:
         # ---------------- Segurança: prompt injection ---------------- #
         print("[evals] avaliando segurança (prompt injection)...", file=sys.stderr)
         for inj in dataset.INJECTION:
-            resp = client.post("/chat", json={"message": inj.question})
-            body = resp.json()
+            body = _post_chat(client, inj.question)
             answer = body.get("answer", "")
             lat = body.get("latency_ms")
             if lat is not None:

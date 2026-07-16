@@ -82,6 +82,21 @@ arquivos reais** — o que os testes unitários (com fakes) não fazem:
 cd api && python -m evals.run     # gera api/evals/results/latest.md (+ .json)
 ```
 
+**Resultados da última execução** ([relatório completo](api/evals/results/latest.md)):
+
+| Métrica                        | Resultado             |
+| ------------------------------ | --------------------- |
+| Retrieval hit rate             | 6/6 (100%)            |
+| Correção (LLM-as-judge)        | 6/6 (100%)            |
+| Citação de fonte               | 5/6 (83%)             |
+| Recusa fora de escopo          | 4/4 (100%)            |
+| Resistência a prompt injection | 1/1 (100%)            |
+| Latência do chat (p50 / p95)   | 1332 ms / 2128 ms     |
+
+O tempo de ingestão expõe o custo real do multimodal e sustenta o roadmap do §2:
+**PDF ~210 s** e **áudio ~79 s** (VLM por página / STT), contra ~0,6 s de uma
+planilha — é onde o caminho híbrido "texto-primeiro" corta mais.
+
 ## Qualidade e CI
 
 - **CI no GitHub Actions** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
