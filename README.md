@@ -1,5 +1,7 @@
 # Company Brain
 
+[![CI](https://github.com/LuSrodri/company-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/LuSrodri/company-brain/actions/workflows/ci.yml)
+
 Monorepo do **Company Brain** — uma base de conhecimento corporativa com RAG
 multimodal, capaz de ingerir documentos, imagens e áudio e responder perguntas
 sobre o conhecimento da empresa.

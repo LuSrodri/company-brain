@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: API — lint + testes (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: api/pyproject.toml
+
+      # O torch padrão do PyPI (Linux) embute CUDA (~2,5 GB). Como o CI só roda
+      # os testes unitários (fakes, sem modelo carregado), o build CPU-only
+      # (~200 MB) basta e corta minutos do pipeline. Precisa vir ANTES do
+      # `pip install -e`, para o pip considerar o requisito `torch` satisfeito.
+      - name: Instalar torch (CPU-only)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Instalar dependências
+        run: pip install -e ".[dev]"
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      # A suíte padrão exclui os testes `e2e` (addopts em pyproject.toml) e usa
+      # fakes em memória — roda sem nenhuma API key.
+      - name: Pytest (unitários)
+        run: pytest
+
+  dashboard:
+    name: Dashboard — typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Typecheck (tsc)
+        run: npm run lint
+
+      - name: Build de produção
+        run: npm run build
